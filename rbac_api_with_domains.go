@@ -14,7 +14,7 @@
 
 package casbin
 
-import "github.com/casbin/casbin/v2/constant"
+import "github.com/hanzoai/authz/v2/constant"
 
 // GetUsersForRoleInDomain gets the users that has a role inside a domain. Add by Gordon
 func (e *Enforcer) GetUsersForRoleInDomain(name string, domain string) []string {

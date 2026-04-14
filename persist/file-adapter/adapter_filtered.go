@@ -20,8 +20,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/casbin/casbin/v2/model"
-	"github.com/casbin/casbin/v2/persist"
+	"github.com/hanzoai/authz/v2/model"
+	"github.com/hanzoai/authz/v2/persist"
 )
 
 // FilteredAdapter is the filtered file adapter for Casbin. It can load policy

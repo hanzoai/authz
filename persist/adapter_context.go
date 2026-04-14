@@ -17,7 +17,7 @@ package persist
 import (
 	"context"
 
-	"github.com/casbin/casbin/v2/model"
+	"github.com/hanzoai/authz/v2/model"
 )
 
 // ContextAdapter provides a context-aware interface for Casbin adapters.

@@ -17,8 +17,8 @@ package casbin
 import (
 	"testing"
 
-	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
-	"github.com/casbin/casbin/v2/util"
+	fileadapter "github.com/hanzoai/authz/v2/persist/file-adapter"
+	"github.com/hanzoai/authz/v2/util"
 )
 
 func TestInitFilteredAdapter(t *testing.T) {
