@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/Knetic/govaluate"
-	"github.com/hanzoai/authz/v2/util"
+	"github.com/casbin/casbin/v2/util"
 )
 
 // GetAllSubjects gets the list of subjects that show up in the current policy.

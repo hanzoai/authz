@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hanzoai/authz/v2/util"
+	"github.com/casbin/casbin/v2/util"
 )
 
 func BenchmarkRoleManagerSmall(b *testing.B) {
