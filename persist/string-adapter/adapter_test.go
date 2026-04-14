@@ -17,8 +17,8 @@ package stringadapter
 import (
 	"testing"
 
-	"github.com/casbin/casbin/v2"
-	"github.com/casbin/casbin/v2/model"
+	"github.com/hanzoai/authz/v2"
+	"github.com/hanzoai/authz/v2/model"
 )
 
 func Test_KeyMatchRbac(t *testing.T) {
