@@ -16,10 +16,10 @@ package casbin
 
 import (
 	"github.com/Knetic/govaluate"
-	"github.com/hanzoai/authz/v2/effector"
-	"github.com/hanzoai/authz/v2/model"
-	"github.com/hanzoai/authz/v2/persist"
-	"github.com/hanzoai/authz/v2/rbac"
+	"github.com/casbin/casbin/v2/effector"
+	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/casbin/v2/persist"
+	"github.com/casbin/casbin/v2/rbac"
 )
 
 var _ IEnforcer = &Enforcer{}

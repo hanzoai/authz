@@ -17,9 +17,9 @@ package persist_test
 import (
 	"testing"
 
-	"github.com/hanzoai/authz/v2"
-	"github.com/hanzoai/authz/v2/model"
-	"github.com/hanzoai/authz/v2/persist"
+	"github.com/casbin/casbin/v2"
+	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/casbin/v2/persist"
 )
 
 func TestPersist(t *testing.T) {

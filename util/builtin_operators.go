@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hanzoai/authz/v2/rbac"
+	"github.com/casbin/casbin/v2/rbac"
 
 	"github.com/Knetic/govaluate"
 )
