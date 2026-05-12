@@ -18,7 +18,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/casbin/casbin/v2/util"
+	"github.com/hanzoai/authz/util"
 )
 
 // testGetUsersInDomain: Add by Gordon

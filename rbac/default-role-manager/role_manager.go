@@ -19,9 +19,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/casbin/casbin/v2/log"
-	"github.com/casbin/casbin/v2/rbac"
-	"github.com/casbin/casbin/v2/util"
+	"github.com/hanzoai/authz/log"
+	"github.com/hanzoai/authz/rbac"
+	"github.com/hanzoai/authz/util"
 )
 
 const defaultDomain string = ""
