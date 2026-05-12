@@ -21,8 +21,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/casbin/casbin/v2/model"
-	"github.com/casbin/casbin/v2/persist"
+	"github.com/hanzoai/authz/model"
+	"github.com/hanzoai/authz/persist"
 )
 
 // AdapterMock is the file adapter for Casbin.

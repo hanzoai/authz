@@ -17,9 +17,9 @@ package casbin
 import (
 	"strings"
 
-	"github.com/casbin/casbin/v2/constant"
-	"github.com/casbin/casbin/v2/errors"
-	"github.com/casbin/casbin/v2/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/util"
 )
 
 // GetRolesForUser gets the roles that a user has.
