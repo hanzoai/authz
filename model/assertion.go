@@ -18,8 +18,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/casbin/casbin/v2/log"
-	"github.com/casbin/casbin/v2/rbac"
+	"github.com/hanzoai/authz/log"
+	"github.com/hanzoai/authz/rbac"
 )
 
 // Assertion represents an expression in a section of the model.

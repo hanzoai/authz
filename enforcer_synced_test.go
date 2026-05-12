@@ -15,8 +15,8 @@
 package casbin
 
 import (
-	"github.com/casbin/casbin/v2/errors"
-	"github.com/casbin/casbin/v2/util"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/util"
 	"sort"
 	"testing"
 	"time"

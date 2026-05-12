@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/casbin/casbin/v2/persist/cache"
+	"github.com/hanzoai/authz/persist/cache"
 )
 
 // CachedEnforcer wraps Enforcer and provides decision cache

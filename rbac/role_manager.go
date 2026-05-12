@@ -14,7 +14,7 @@
 
 package rbac
 
-import "github.com/casbin/casbin/v2/log"
+import "github.com/hanzoai/authz/log"
 
 type MatchingFunc func(arg1 string, arg2 string) bool
 

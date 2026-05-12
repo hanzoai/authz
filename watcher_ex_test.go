@@ -17,7 +17,7 @@ package casbin
 import (
 	"testing"
 
-	"github.com/casbin/casbin/v2/model"
+	"github.com/hanzoai/authz/model"
 )
 
 type SampleWatcherEx struct {
