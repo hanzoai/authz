@@ -6,4 +6,4 @@ require (
 	github.com/tidwall/gjson v1.14.4
 )
 
-go 1.13
+go 1.26.3
