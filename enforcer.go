@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"errors"
@@ -75,12 +75,12 @@ func (e EnforceContext) GetCacheKey() string {
 //
 // File:
 //
-//	e := casbin.NewEnforcer("path/to/basic_model.conf", "path/to/basic_policy.csv")
+//	e := authz.NewEnforcer("path/to/basic_model.conf", "path/to/basic_policy.csv")
 //
 // MySQL DB:
 //
 //	a := mysqladapter.NewDBAdapter("mysql", "mysql_username:mysql_password@tcp(127.0.0.1:3306)/")
-//	e := casbin.NewEnforcer("path/to/basic_model.conf", a)
+//	e := authz.NewEnforcer("path/to/basic_model.conf", a)
 func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 	e := &Enforcer{logger: &log.DefaultLogger{}}
 
