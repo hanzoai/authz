@@ -1,4 +1,4 @@
-package casbin
+package authz
 
 import (
 	"github.com/hanzoai/authz/model"
