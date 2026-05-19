@@ -413,7 +413,7 @@ func (model Model) GetFieldIndex(ptype string, field string) (int, error) {
 		}
 	}
 	if index == -1 {
-		return index, fmt.Errorf(field + " index is not set, please use enforcer.SetFieldIndex() to set index")
+		return index, fmt.Errorf("%s index is not set, please use enforcer.SetFieldIndex() to set index", field)
 	}
 	assertion.FieldIndexMap[field] = index
 	return index, nil
