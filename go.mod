@@ -2,8 +2,8 @@ module github.com/hanzoai/authz
 
 require (
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible
-	github.com/golang/mock v1.4.4
-	github.com/tidwall/gjson v1.14.4
+	github.com/golang/mock v1.7.0-rc.1
+	github.com/tidwall/gjson v1.18.0
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
-	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.70.0 // indirect
@@ -33,13 +33,8 @@ require (
 // Pinned to v0.0.0 + local replace until cloud and zip publish stable tags;
 // matches the kms / vfs convention (see hanzoai/kms go.mod).
 require (
-	github.com/hanzoai/cloud v0.0.0
-	github.com/hanzoai/zip v0.0.0
-)
-
-replace (
-	github.com/hanzoai/cloud => ../cloud
-	github.com/hanzoai/zip => ../zip
+	github.com/hanzoai/cloud v0.1.0
+	github.com/hanzoai/zip v0.2.0
 )
 
 go 1.26.3
