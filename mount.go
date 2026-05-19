@@ -1,7 +1,7 @@
 // Package authz exposes the HIP-0106 Mount() entry point for the
 // hanzoai/authz policy engine.
 //
-// The root module (package casbin) is the in-house policy engine fork
+// The root module is the in-house policy engine fork retained at this
 // retained at that package name for backward-compat with downstream
 // importers (hanzoai/iam et al). This package wraps the engine in a
 // thin HTTP surface — Check / AddPolicy / ListPolicies / RemovePolicy
@@ -10,7 +10,7 @@
 //
 // Wire shape:
 //
-//	import _ "github.com/hanzoai/authz/pkg/authz"  // init() registers
+//	import _ "github.com/hanzoai/authz"  // init() registers
 //
 // The init() function below calls cloud.Register("authz", 70, …). At
 // startup the cloud binary iterates the registry and calls Mount() for
@@ -32,10 +32,8 @@ import (
 	"strings"
 	"sync"
 
-	casbin "github.com/hanzoai/authz"
 	"github.com/hanzoai/authz/model"
-	stringadapter "github.com/hanzoai/authz/persist/string-adapter"
-	"github.com/hanzoai/cloud/pkg/cloud"
+	"github.com/hanzoai/cloud"
 	"github.com/hanzoai/zip"
 )
 
@@ -62,13 +60,13 @@ m = (g(r.sub, p.sub) || keyMatch(r.sub, p.sub)) && keyMatch(r.obj, p.obj) && key
 // orgEnforcers retains per-org SyncedEnforcer instances. authz keeps
 // policies scoped by the gateway-minted X-Org-Id header.
 var (
-	orgEnforcers sync.Map // map[string]*casbin.SyncedEnforcer
+	orgEnforcers sync.Map // map[string]*SyncedEnforcer
 )
 
 // Mount registers authz routes with the shared cloud zip.App per
 // HIP-0106. authz contributes /v1/authz/* — health, readyz, check, and
 // policy CRUD. The full enforcement library remains importable directly
-// (package casbin) for in-process consumers that need richer semantics
+// (package authz) for in-process consumers that need richer semantics
 // than the HTTP surface exposes.
 func Mount(app *zip.App, deps cloud.Deps) error {
 	logger := deps.Logger.New("subsystem", "authz")
@@ -215,21 +213,26 @@ func Mount(app *zip.App, deps cloud.Deps) error {
 // enforcerFor returns the SyncedEnforcer for org, lazily constructing
 // one (with the canonical RBAC model + empty string adapter) on first
 // access.
-func enforcerFor(org string) (*casbin.SyncedEnforcer, error) {
+func enforcerFor(org string) (*SyncedEnforcer, error) {
 	if v, ok := orgEnforcers.Load(org); ok {
-		return v.(*casbin.SyncedEnforcer), nil
+		return v.(*SyncedEnforcer), nil
 	}
 	m, err := model.NewModelFromString(rbacModel)
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
 	}
-	a := stringadapter.NewAdapter("") // empty in-memory policy store
-	e, err := casbin.NewSyncedEnforcer(m, a)
+	// Default adapter is an in-memory implementation that satisfies
+	// persist.Adapter; production deployments inject a persistent
+	// adapter via the cloud orchestrator. Kept inline here to avoid an
+	// import cycle through persist/string-adapter (which integration-
+	// tests root authz).
+	a := newDefaultAdapter()
+	e, err := NewSyncedEnforcer(m, a)
 	if err != nil {
 		return nil, fmt.Errorf("enforcer: %w", err)
 	}
 	actual, _ := orgEnforcers.LoadOrStore(org, e)
-	return actual.(*casbin.SyncedEnforcer), nil
+	return actual.(*SyncedEnforcer), nil
 }
 
 // init registers authz with the cloud subsystem registry. Order 70
