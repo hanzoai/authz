@@ -36,7 +36,7 @@ func testRuleCount(t *testing.T, model model.Model, expected int, sec string, pt
 }
 
 func TestDuplicateRuleInAdapter(t *testing.T) {
-	e, _ := casbin.NewEnforcer("../examples/basic_model.conf")
+	e, _ := authz.NewEnforcer("../examples/basic_model.conf")
 
 	_, _ = e.AddPolicy("alice", "data1", "read")
 	_, _ = e.AddPolicy("alice", "data1", "read")
