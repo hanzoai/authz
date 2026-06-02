@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"testing"
 
-	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
+	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
 )
 
 func TestPathError(t *testing.T) {
@@ -58,7 +58,7 @@ func TestModelError(t *testing.T) {
 	}
 }
 
-//func TestPolicyError(t *testing.T) {
+// func TestPolicyError(t *testing.T) {
 //	_, err := NewEnforcer("examples/basic_model.conf", "examples/error/error_policy.csv")
 //	if err == nil {
 //		t.Errorf("Should be error here.")

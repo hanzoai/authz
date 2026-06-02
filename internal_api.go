@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"fmt"
 
-	Err "github.com/hanzoai/authz/errors"
-	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/authz/persist"
+	Err "github.com/casbin/casbin/v3/errors"
+	"github.com/casbin/casbin/v3/log"
+	"github.com/casbin/casbin/v3/model"
+	"github.com/casbin/casbin/v3/persist"
 )
 
 const (
@@ -34,30 +35,45 @@ func (e *Enforcer) shouldNotify() bool {
 	return e.watcher != nil && e.autoNotifyWatcher
 }
 
+// validateConstraintsForGroupingPolicy validates constraints for grouping policy changes.
+// It returns an error if constraint validation fails.
+func (e *Enforcer) validateConstraintsForGroupingPolicy() error {
+	return e.model.ValidateConstraints()
+}
+
 // addPolicy adds a rule to the current policy.
 func (e *Enforcer) addPolicyWithoutNotify(sec string, ptype string, rule []string) (bool, error) {
 	if e.dispatcher != nil && e.autoNotifyDispatcher {
 		return true, e.dispatcher.AddPolicies(sec, ptype, [][]string{rule})
 	}
 
-	if e.model.HasPolicy(sec, ptype, rule) {
-		return false, nil
+	hasPolicy, err := e.model.HasPolicy(sec, ptype, rule)
+	if hasPolicy || err != nil {
+		return false, err
 	}
 
 	if e.shouldPersist() {
-		if err := e.adapter.AddPolicy(sec, ptype, rule); err != nil {
+		if err = e.adapter.AddPolicy(sec, ptype, rule); err != nil {
 			if err.Error() != notImplemented {
 				return false, err
 			}
 		}
 	}
 
-	e.model.AddPolicy(sec, ptype, rule)
+	err = e.model.AddPolicy(sec, ptype, rule)
+	if err != nil {
+		return false, err
+	}
 
 	if sec == "g" {
 		err := e.BuildIncrementalRoleLinks(model.PolicyAdd, ptype, [][]string{rule})
 		if err != nil {
 			return true, err
+		}
+
+		// Validate constraints after adding grouping policy
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 
@@ -66,14 +82,17 @@ func (e *Enforcer) addPolicyWithoutNotify(sec string, ptype string, rule []strin
 
 // addPoliciesWithoutNotify adds rules to the current policy without notify
 // If autoRemoveRepeat == true, existing rules are automatically filtered
-// Otherwise, false is returned directly
+// Otherwise, false is returned directly.
 func (e *Enforcer) addPoliciesWithoutNotify(sec string, ptype string, rules [][]string, autoRemoveRepeat bool) (bool, error) {
 	if e.dispatcher != nil && e.autoNotifyDispatcher {
 		return true, e.dispatcher.AddPolicies(sec, ptype, rules)
 	}
 
-	if !autoRemoveRepeat && e.model.HasPolicies(sec, ptype, rules) {
-		return false, nil
+	if !autoRemoveRepeat {
+		hasPolicies, err := e.model.HasPolicies(sec, ptype, rules)
+		if hasPolicies || err != nil {
+			return false, err
+		}
 	}
 
 	if e.shouldPersist() {
@@ -84,7 +103,10 @@ func (e *Enforcer) addPoliciesWithoutNotify(sec string, ptype string, rules [][]
 		}
 	}
 
-	e.model.AddPolicies(sec, ptype, rules)
+	err := e.model.AddPolicies(sec, ptype, rules)
+	if err != nil {
+		return false, err
+	}
 
 	if sec == "g" {
 		err := e.BuildIncrementalRoleLinks(model.PolicyAdd, ptype, rules)
@@ -95,6 +117,11 @@ func (e *Enforcer) addPoliciesWithoutNotify(sec string, ptype string, rules [][]
 		err = e.BuildIncrementalConditionalRoleLinks(model.PolicyAdd, ptype, rules)
 		if err != nil {
 			return true, err
+		}
+
+		// Validate constraints after adding grouping policies
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 
@@ -115,15 +142,20 @@ func (e *Enforcer) removePolicyWithoutNotify(sec string, ptype string, rule []st
 		}
 	}
 
-	ruleRemoved := e.model.RemovePolicy(sec, ptype, rule)
-	if !ruleRemoved {
-		return ruleRemoved, nil
+	ruleRemoved, err := e.model.RemovePolicy(sec, ptype, rule)
+	if !ruleRemoved || err != nil {
+		return ruleRemoved, err
 	}
 
 	if sec == "g" {
 		err := e.BuildIncrementalRoleLinks(model.PolicyRemove, ptype, [][]string{rule})
 		if err != nil {
 			return ruleRemoved, err
+		}
+
+		// Validate constraints after removing grouping policy
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 
@@ -142,9 +174,9 @@ func (e *Enforcer) updatePolicyWithoutNotify(sec string, ptype string, oldRule [
 			}
 		}
 	}
-	ruleUpdated := e.model.UpdatePolicy(sec, ptype, oldRule, newRule)
-	if !ruleUpdated {
-		return ruleUpdated, nil
+	ruleUpdated, err := e.model.UpdatePolicy(sec, ptype, oldRule, newRule)
+	if !ruleUpdated || err != nil {
+		return ruleUpdated, err
 	}
 
 	if sec == "g" {
@@ -155,6 +187,11 @@ func (e *Enforcer) updatePolicyWithoutNotify(sec string, ptype string, oldRule [
 		err = e.BuildIncrementalRoleLinks(model.PolicyAdd, ptype, [][]string{newRule}) // add the new rule
 		if err != nil {
 			return ruleUpdated, err
+		}
+
+		// Validate constraints after updating grouping policy
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 
@@ -178,9 +215,9 @@ func (e *Enforcer) updatePoliciesWithoutNotify(sec string, ptype string, oldRule
 		}
 	}
 
-	ruleUpdated := e.model.UpdatePolicies(sec, ptype, oldRules, newRules)
-	if !ruleUpdated {
-		return ruleUpdated, nil
+	ruleUpdated, err := e.model.UpdatePolicies(sec, ptype, oldRules, newRules)
+	if !ruleUpdated || err != nil {
+		return ruleUpdated, err
 	}
 
 	if sec == "g" {
@@ -192,6 +229,11 @@ func (e *Enforcer) updatePoliciesWithoutNotify(sec string, ptype string, oldRule
 		if err != nil {
 			return ruleUpdated, err
 		}
+
+		// Validate constraints after updating grouping policies
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
+		}
 	}
 
 	return ruleUpdated, nil
@@ -199,8 +241,8 @@ func (e *Enforcer) updatePoliciesWithoutNotify(sec string, ptype string, oldRule
 
 // removePolicies removes rules from the current policy.
 func (e *Enforcer) removePoliciesWithoutNotify(sec string, ptype string, rules [][]string) (bool, error) {
-	if !e.model.HasPolicies(sec, ptype, rules) {
-		return false, nil
+	if hasPolicies, err := e.model.HasPolicies(sec, ptype, rules); !hasPolicies || err != nil {
+		return hasPolicies, err
 	}
 
 	if e.dispatcher != nil && e.autoNotifyDispatcher {
@@ -215,15 +257,20 @@ func (e *Enforcer) removePoliciesWithoutNotify(sec string, ptype string, rules [
 		}
 	}
 
-	rulesRemoved := e.model.RemovePolicies(sec, ptype, rules)
-	if !rulesRemoved {
-		return rulesRemoved, nil
+	rulesRemoved, err := e.model.RemovePolicies(sec, ptype, rules)
+	if !rulesRemoved || err != nil {
+		return rulesRemoved, err
 	}
 
 	if sec == "g" {
 		err := e.BuildIncrementalRoleLinks(model.PolicyRemove, ptype, rules)
 		if err != nil {
 			return rulesRemoved, err
+		}
+
+		// Validate constraints after removing grouping policies
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 	return rulesRemoved, nil
@@ -247,15 +294,20 @@ func (e *Enforcer) removeFilteredPolicyWithoutNotify(sec string, ptype string, f
 		}
 	}
 
-	ruleRemoved, effects := e.model.RemoveFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
-	if !ruleRemoved {
-		return ruleRemoved, nil
+	ruleRemoved, effects, err := e.model.RemoveFilteredPolicy(sec, ptype, fieldIndex, fieldValues...)
+	if !ruleRemoved || err != nil {
+		return ruleRemoved, err
 	}
 
 	if sec == "g" {
 		err := e.BuildIncrementalRoleLinks(model.PolicyRemove, ptype, effects)
 		if err != nil {
 			return ruleRemoved, err
+		}
+
+		// Validate constraints after removing filtered grouping policies
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return false, err
 		}
 	}
 
@@ -267,6 +319,10 @@ func (e *Enforcer) updateFilteredPoliciesWithoutNotify(sec string, ptype string,
 		oldRules [][]string
 		err      error
 	)
+
+	if _, err = e.model.GetAssertion(sec, ptype); err != nil {
+		return oldRules, err
+	}
 
 	if e.shouldPersist() {
 		if oldRules, err = e.adapter.(persist.UpdatableAdapter).UpdateFilteredPolicies(sec, ptype, newRules, fieldIndex, fieldValues...); err != nil {
@@ -286,8 +342,14 @@ func (e *Enforcer) updateFilteredPoliciesWithoutNotify(sec string, ptype string,
 		return oldRules, e.dispatcher.UpdateFilteredPolicies(sec, ptype, oldRules, newRules)
 	}
 
-	ruleChanged := e.model.RemovePolicies(sec, ptype, oldRules)
-	e.model.AddPolicies(sec, ptype, newRules)
+	ruleChanged, err := e.model.RemovePolicies(sec, ptype, oldRules)
+	if err != nil {
+		return oldRules, err
+	}
+	err = e.model.AddPolicies(sec, ptype, newRules)
+	if err != nil {
+		return oldRules, err
+	}
 	ruleChanged = ruleChanged && len(newRules) != 0
 	if !ruleChanged {
 		return make([][]string, 0), nil
@@ -302,6 +364,11 @@ func (e *Enforcer) updateFilteredPoliciesWithoutNotify(sec string, ptype string,
 		if err != nil {
 			return oldRules, err
 		}
+
+		// Validate constraints after updating filtered grouping policies
+		if err := e.validateConstraintsForGroupingPolicy(); err != nil {
+			return oldRules, err
+		}
 	}
 
 	return oldRules, nil
@@ -309,19 +376,22 @@ func (e *Enforcer) updateFilteredPoliciesWithoutNotify(sec string, ptype string,
 
 // addPolicy adds a rule to the current policy.
 func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, error) {
-	ok, err := e.addPolicyWithoutNotify(sec, ptype, rule)
+	ok, err := e.logPolicyOperation(log.EventAddPolicy, sec, rule, func() (bool, error) {
+		return e.addPolicyWithoutNotify(sec, ptype, rule)
+	})
+
 	if !ok || err != nil {
 		return ok, err
 	}
 
 	if e.shouldNotify() {
-		var err error
-		if watcher, ok := e.watcher.(persist.WatcherEx); ok {
-			err = watcher.UpdateForAddPolicy(sec, ptype, rule...)
+		var notifyErr error
+		if watcher, isWatcherEx := e.watcher.(persist.WatcherEx); isWatcherEx {
+			notifyErr = watcher.UpdateForAddPolicy(sec, ptype, rule...)
 		} else {
-			err = e.watcher.Update()
+			notifyErr = e.watcher.Update()
 		}
-		return true, err
+		return true, notifyErr
 	}
 
 	return true, nil
@@ -329,7 +399,7 @@ func (e *Enforcer) addPolicy(sec string, ptype string, rule []string) (bool, err
 
 // addPolicies adds rules to the current policy.
 // If autoRemoveRepeat == true, existing rules are automatically filtered
-// Otherwise, false is returned directly
+// Otherwise, false is returned directly.
 func (e *Enforcer) addPolicies(sec string, ptype string, rules [][]string, autoRemoveRepeat bool) (bool, error) {
 	ok, err := e.addPoliciesWithoutNotify(sec, ptype, rules, autoRemoveRepeat)
 	if !ok || err != nil {
@@ -351,20 +421,22 @@ func (e *Enforcer) addPolicies(sec string, ptype string, rules [][]string, autoR
 
 // removePolicy removes a rule from the current policy.
 func (e *Enforcer) removePolicy(sec string, ptype string, rule []string) (bool, error) {
-	ok, err := e.removePolicyWithoutNotify(sec, ptype, rule)
+	ok, err := e.logPolicyOperation(log.EventRemovePolicy, sec, rule, func() (bool, error) {
+		return e.removePolicyWithoutNotify(sec, ptype, rule)
+	})
+
 	if !ok || err != nil {
 		return ok, err
 	}
 
 	if e.shouldNotify() {
-		var err error
-		if watcher, ok := e.watcher.(persist.WatcherEx); ok {
-			err = watcher.UpdateForRemovePolicy(sec, ptype, rule...)
+		var notifyErr error
+		if watcher, isWatcherEx := e.watcher.(persist.WatcherEx); isWatcherEx {
+			notifyErr = watcher.UpdateForRemovePolicy(sec, ptype, rule...)
 		} else {
-			err = e.watcher.Update()
+			notifyErr = e.watcher.Update()
 		}
-		return true, err
-
+		return true, notifyErr
 	}
 
 	return true, nil
@@ -474,5 +546,7 @@ func (e *Enforcer) GetFieldIndex(ptype string, field string) (int, error) {
 
 func (e *Enforcer) SetFieldIndex(ptype string, field string, index int) {
 	assertion := e.model["p"][ptype]
+	assertion.FieldIndexMutex.Lock()
 	assertion.FieldIndexMap[field] = index
+	assertion.FieldIndexMutex.Unlock()
 }

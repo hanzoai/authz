@@ -17,25 +17,24 @@ package model
 import (
 	"errors"
 	"strings"
+	"sync"
 
-	"github.com/hanzoai/authz/log"
-	"github.com/hanzoai/authz/rbac"
+	"github.com/casbin/casbin/v3/rbac"
 )
 
 // Assertion represents an expression in a section of the model.
-// For example: r = sub, obj, act
+// For example: r = sub, obj, act.
 type Assertion struct {
-	Key           string
-	Value         string
-	Tokens        []string
-	ParamsTokens  []string
-	Policy        [][]string
-	PolicyMap     map[string]int
-	RM            rbac.RoleManager
-	CondRM        rbac.ConditionalRoleManager
-	FieldIndexMap map[string]int
-
-	logger log.Logger
+	Key             string
+	Value           string
+	Tokens          []string
+	ParamsTokens    []string
+	Policy          [][]string
+	PolicyMap       map[string]int
+	RM              rbac.RoleManager
+	CondRM          rbac.ConditionalRoleManager
+	FieldIndexMap   map[string]int
+	FieldIndexMutex sync.RWMutex
 }
 
 func (ast *Assertion) buildIncrementalRoleLinks(rm rbac.RoleManager, op PolicyOp, rules [][]string) error {
@@ -147,7 +146,7 @@ func (ast *Assertion) buildConditionalRoleLinks(condRM rbac.ConditionalRoleManag
 	return nil
 }
 
-// addConditionalRoleLinks adds Link to rbac.ConditionalRoleManager and sets the parameters for LinkConditionFunc
+// addConditionalRoleLink adds Link to rbac.ConditionalRoleManager and sets the parameters for LinkConditionFunc.
 func (ast *Assertion) addConditionalRoleLink(rule []string, domainRule []string) error {
 	var err error
 	if len(domainRule) == 0 {
@@ -165,10 +164,6 @@ func (ast *Assertion) addConditionalRoleLink(rule []string, domainRule []string)
 	return err
 }
 
-func (ast *Assertion) setLogger(logger log.Logger) {
-	ast.logger = logger
-}
-
 func (ast *Assertion) copy() *Assertion {
 	tokens := append([]string(nil), ast.Tokens...)
 	policy := make([][]string, len(ast.Policy))
@@ -181,13 +176,23 @@ func (ast *Assertion) copy() *Assertion {
 		policyMap[k] = v
 	}
 
+	ast.FieldIndexMutex.RLock()
+	fieldIndexMap := make(map[string]int)
+	for k, v := range ast.FieldIndexMap {
+		fieldIndexMap[k] = v
+	}
+	ast.FieldIndexMutex.RUnlock()
+
 	newAst := &Assertion{
 		Key:           ast.Key,
 		Value:         ast.Value,
 		PolicyMap:     policyMap,
 		Tokens:        tokens,
 		Policy:        policy,
-		FieldIndexMap: ast.FieldIndexMap,
+		FieldIndexMap: fieldIndexMap,
+		ParamsTokens:  append([]string(nil), ast.ParamsTokens...),
+		RM:            ast.RM,
+		CondRM:        ast.CondRM,
 	}
 
 	return newAst

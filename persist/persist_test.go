@@ -17,13 +17,13 @@ package persist_test
 import (
 	"testing"
 
-	"github.com/hanzoai/authz"
-	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/authz/persist"
+	"github.com/casbin/casbin/v3"
+	"github.com/casbin/casbin/v3/model"
+	"github.com/casbin/casbin/v3/persist"
 )
 
 func TestPersist(t *testing.T) {
-	//No tests yet
+	// No tests yet
 }
 
 func testRuleCount(t *testing.T, model model.Model, expected int, sec string, ptype string, tag string) {
@@ -36,7 +36,7 @@ func testRuleCount(t *testing.T, model model.Model, expected int, sec string, pt
 }
 
 func TestDuplicateRuleInAdapter(t *testing.T) {
-	e, _ := authz.NewEnforcer("../examples/basic_model.conf")
+	e, _ := casbin.NewEnforcer("../examples/basic_model.conf")
 
 	_, _ = e.AddPolicy("alice", "data1", "read")
 	_, _ = e.AddPolicy("alice", "data1", "read")
@@ -45,7 +45,7 @@ func TestDuplicateRuleInAdapter(t *testing.T) {
 
 	e.ClearPolicy()
 
-	//simulate adapter.LoadPolicy with duplicate rules
+	// simulate adapter.LoadPolicy with duplicate rules
 	_ = persist.LoadPolicyArray([]string{"p", "alice", "data1", "read"}, e.GetModel())
 	_ = persist.LoadPolicyArray([]string{"p", "alice", "data1", "read"}, e.GetModel())
 

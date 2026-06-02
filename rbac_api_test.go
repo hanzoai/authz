@@ -12,16 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
+	"fmt"
 	"log"
 	"sort"
 	"testing"
 
-	"github.com/hanzoai/authz/constant"
-	"github.com/hanzoai/authz/errors"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/constant"
+	"github.com/casbin/casbin/v3/errors"
+	defaultrolemanager "github.com/casbin/casbin/v3/rbac/default-role-manager"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func testGetRoles(t *testing.T, e *Enforcer, res []string, name string, domain ...string) {
@@ -171,7 +173,6 @@ func TestRoleAPI_Domains(t *testing.T) {
 
 	testGetPermissions(t, e, "admin", [][]string{{"admin", "domain1", "data1", "read"}, {"admin", "domain1", "data1", "write"}}, "domain1")
 	testGetPermissions(t, e, "admin", [][]string{{"admin", "domain2", "data2", "read"}, {"admin", "domain2", "data2", "write"}}, "domain2")
-
 }
 
 func TestEnforcer_AddRolesForUser(t *testing.T) {
@@ -192,7 +193,10 @@ func TestEnforcer_AddRolesForUser(t *testing.T) {
 
 func testGetPermissions(t *testing.T, e *Enforcer, name string, res [][]string, domain ...string) {
 	t.Helper()
-	myRes := e.GetPermissionsForUser(name, domain...)
+	myRes, err := e.GetPermissionsForUser(name, domain...)
+	if err != nil {
+		t.Error(err.Error())
+	}
 	t.Log("Permissions for ", name, ": ", myRes)
 
 	if !util.Array2DEquals(res, myRes) {
@@ -202,7 +206,11 @@ func testGetPermissions(t *testing.T, e *Enforcer, name string, res [][]string, 
 
 func testHasPermission(t *testing.T, e *Enforcer, name string, permission []string, res bool) {
 	t.Helper()
-	myRes := e.HasPermissionForUser(name, permission...)
+	myRes, err := e.HasPermissionForUser(name, permission...)
+	if err != nil {
+		t.Error(err.Error())
+	}
+
 	t.Log(name, " has permission ", util.ArrayToString(permission), ": ", myRes)
 
 	if res != myRes {
@@ -212,7 +220,10 @@ func testHasPermission(t *testing.T, e *Enforcer, name string, permission []stri
 
 func testGetNamedPermissionsForUser(t *testing.T, e *Enforcer, ptype string, name string, res [][]string, domain ...string) {
 	t.Helper()
-	myRes := e.GetNamedPermissionsForUser(ptype, name, domain...)
+	myRes, err := e.GetNamedPermissionsForUser(ptype, name, domain...)
+	if err != nil {
+		t.Error(err.Error())
+	}
 	t.Log("Named permissions for ", name, ": ", myRes)
 
 	if !util.Array2DEquals(res, myRes) {
@@ -310,7 +321,7 @@ func TestImplicitRoleAPI(t *testing.T) {
 	e.GetRoleManager().AddMatchingFunc("matcher", util.KeyMatch)
 	e.AddNamedMatchingFunc("g2", "matcher", util.KeyMatch)
 
-	//testGetImplicitRoles(t, e, "cathy", []string{"/book/1/2/3/4/5", "pen_admin", "/book/*", "book_group"})
+	// testGetImplicitRoles(t, e, "cathy", []string{"/book/1/2/3/4/5", "pen_admin", "/book/*", "book_group"})
 	testGetImplicitRoles(t, e, "cathy", []string{"/book/1/2/3/4/5", "pen_admin"})
 	testGetRoles(t, e, []string{"/book/1/2/3/4/5", "pen_admin"}, "cathy")
 }
@@ -335,9 +346,9 @@ func testGetImplicitPermissionsWithDomain(t *testing.T, e *Enforcer, name string
 	}
 }
 
-func testGetNamedImplicitPermissions(t *testing.T, e *Enforcer, ptype string, name string, res [][]string) {
+func testGetNamedImplicitPermissions(t *testing.T, e *Enforcer, ptype string, gtype string, name string, res [][]string) {
 	t.Helper()
-	myRes, _ := e.GetNamedImplicitPermissionsForUser(ptype, name)
+	myRes, _ := e.GetNamedImplicitPermissionsForUser(ptype, gtype, name)
 	t.Log("Named implicit permissions for ", name, ": ", myRes)
 
 	if !util.Set2DEquals(res, myRes) {
@@ -370,9 +381,11 @@ func TestImplicitPermissionAPI(t *testing.T) {
 
 	e, _ = NewEnforcer("examples/rbac_with_multiple_policy_model.conf", "examples/rbac_with_multiple_policy_policy.csv")
 
-	testGetNamedImplicitPermissions(t, e, "p", "alice", [][]string{{"user", "/data", "GET"}, {"admin", "/data", "POST"}})
-	testGetNamedImplicitPermissions(t, e, "p2", "alice", [][]string{{"user", "view"}, {"admin", "create"}})
+	testGetNamedImplicitPermissions(t, e, "p", "g", "alice", [][]string{{"user", "/data", "GET"}, {"admin", "/data", "POST"}})
+	testGetNamedImplicitPermissions(t, e, "p2", "g", "alice", [][]string{{"user", "view"}, {"admin", "create"}})
 
+	testGetNamedImplicitPermissions(t, e, "p", "g2", "alice", [][]string{{"user", "/data", "GET"}})
+	testGetNamedImplicitPermissions(t, e, "p2", "g2", "alice", [][]string{{"user", "view"}})
 }
 
 func TestImplicitPermissionAPIWithDomain(t *testing.T) {
@@ -622,6 +635,43 @@ func TestGetImplicitUsersForResource(t *testing.T) {
 		{"alice", "data2", "write"}}, "data2")
 }
 
+func TestGetImplicitUsersForResourceWithResourceRoles(t *testing.T) {
+	e, _ := NewEnforcer("examples/rbac_with_resource_roles_model.conf", "examples/rbac_with_resource_roles_policy.csv")
+
+	// Test data1 resource - should return users who have access through g2 relationships
+	data1Users, err := e.GetNamedImplicitUsersForResource("g2", "data1")
+	if err != nil {
+		t.Fatalf("GetNamedImplicitUsersForResource failed: %v", err)
+	}
+
+	expectedData1Users := 2 // [alice data1 read] + [alice data_group write]
+	if len(data1Users) != expectedData1Users {
+		t.Errorf("Expected %d users for data1 resource, got %d: %v", expectedData1Users, len(data1Users), data1Users)
+	}
+
+	// Test data2 resource - should return users who have access through g2 relationships
+	data2Users, err := e.GetNamedImplicitUsersForResource("g2", "data2")
+	if err != nil {
+		t.Fatalf("GetNamedImplicitUsersForResource failed: %v", err)
+	}
+
+	expectedData2Users := 2 // [bob data2 write] + [alice data_group write]
+	if len(data2Users) != expectedData2Users {
+		t.Errorf("Expected %d users for data2 resource, got %d: %v", expectedData2Users, len(data2Users), data2Users)
+	}
+
+	// Test with "g" policy type - should return users who have access through g relationships
+	data1UsersG, err := e.GetNamedImplicitUsersForResource("g", "data1")
+	if err != nil {
+		t.Fatalf("GetNamedImplicitUsersForResource with g failed: %v", err)
+	}
+
+	expectedData1UsersG := 1 // [alice data1 read] only
+	if len(data1UsersG) != expectedData1UsersG {
+		t.Errorf("Expected %d users for data1 resource with g policy, got %d: %v", expectedData1UsersG, len(data1UsersG), data1UsersG)
+	}
+}
+
 func testGetImplicitUsersForResourceByDomain(t *testing.T, e *Enforcer, res [][]string, resource string, domain string) {
 	t.Helper()
 	myRes, err := e.GetImplicitUsersForResourceByDomain(resource, domain)
@@ -645,4 +695,189 @@ func TestGetImplicitUsersForResourceByDomain(t *testing.T) {
 
 	testGetImplicitUsersForResourceByDomain(t, e, [][]string{{"bob", "domain2", "data2", "read"},
 		{"bob", "domain2", "data2", "write"}}, "data2", "domain2")
+}
+
+func TestConditional(t *testing.T) {
+	e, _ := NewEnforcer("examples/rbac_with_domains_conditional_model.conf", "examples/rbac_with_domains_conditional_policy.csv")
+	g, _ := e.GetNamedGroupingPolicy("g")
+	for _, gp := range g {
+		e.AddNamedDomainLinkConditionFunc("g", gp[0], gp[1], gp[2], util.TimeMatchFunc)
+	}
+
+	testDomainEnforce(t, e, "alice", "domain1", "service1", "/list", true)
+	testDomainEnforce(t, e, "bob", "domain2", "service2", "/broadcast", true)
+	testDomainEnforce(t, e, "jack", "domain1", "service1", "/list", false)
+	testGetImplicitRolesInDomain(t, e, "alice", "domain1", []string{"test1"})
+	testGetRolesInDomain(t, e, "alice", "domain1", []string{"test1"})
+	testGetUsersInDomain(t, e, "test1", "domain1", []string{"alice"})
+}
+
+func TestMaxHierarchyLevelConsistency(t *testing.T) {
+	// Test consistency behavior under different maxHierarchyLevel values
+	testCases := []struct {
+		maxLevel int
+		name     string
+	}{
+		{1, "maxHierarchyLevel=1"},
+		{2, "maxHierarchyLevel=2"},
+		{3, "maxHierarchyLevel=3"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use model files from examples
+			e, err := NewEnforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+			if err != nil {
+				t.Fatalf("Failed to create enforcer: %v", err)
+			}
+
+			// Set the maximum hierarchy level for role manager
+			rm := defaultrolemanager.NewRoleManager(tc.maxLevel)
+			e.SetRoleManager(rm)
+
+			// Add role hierarchy: level0 -> level1 -> level2 -> level3 -> level4
+			_, err = e.AddRoleForUser("level0", "level1")
+			if err != nil {
+				t.Fatalf("Failed to add role for user: %v", err)
+			}
+			_, err = e.AddRoleForUser("level1", "level2")
+			if err != nil {
+				t.Fatalf("Failed to add role for user: %v", err)
+			}
+			_, err = e.AddRoleForUser("level2", "level3")
+			if err != nil {
+				t.Fatalf("Failed to add role for user: %v", err)
+			}
+			_, err = e.AddRoleForUser("level3", "level4")
+			if err != nil {
+				t.Fatalf("Failed to add role for user: %v", err)
+			}
+
+			// Test HasLink method
+			t.Run("HasLink", func(t *testing.T) {
+				for i := 1; i <= 4; i++ {
+					hasLink, err := rm.HasLink("level0", fmt.Sprintf("level%d", i))
+					if err != nil {
+						t.Fatalf("HasLink error: %v", err)
+					}
+					expected := i <= tc.maxLevel
+					if hasLink != expected {
+						t.Errorf("HasLink(level0, level%d): got %v, want %v", i, hasLink, expected)
+					}
+				}
+			})
+
+			// Test GetImplicitRolesForUser method
+			t.Run("GetImplicitRolesForUser", func(t *testing.T) {
+				implicitRoles, err := e.GetImplicitRolesForUser("level0")
+				if err != nil {
+					t.Fatalf("GetImplicitRolesForUser error: %v", err)
+				}
+
+				expectedCount := tc.maxLevel
+				if len(implicitRoles) != expectedCount {
+					t.Errorf("GetImplicitRolesForUser(level0): got %d roles %v, want %d roles",
+						len(implicitRoles), implicitRoles, expectedCount)
+				}
+
+				// Verify that returned roles are correct
+				for i := 1; i <= tc.maxLevel; i++ {
+					expectedRole := fmt.Sprintf("level%d", i)
+					found := false
+					for _, role := range implicitRoles {
+						if role == expectedRole {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("Expected role %s not found in implicit roles: %v", expectedRole, implicitRoles)
+					}
+				}
+			})
+
+			// Test GetImplicitUsersForRole method
+			t.Run("GetImplicitUsersForRole", func(t *testing.T) {
+				implicitUsers, err := e.GetImplicitUsersForRole("level4")
+				if err != nil {
+					t.Fatalf("GetImplicitUsersForRole error: %v", err)
+				}
+
+				expectedCount := tc.maxLevel
+				if len(implicitUsers) != expectedCount {
+					t.Errorf("GetImplicitUsersForRole(level4): got %d users %v, want %d users",
+						len(implicitUsers), implicitUsers, expectedCount)
+				}
+
+				// Verify that returned users are correct (starting from level3 upward)
+				for i := 0; i < tc.maxLevel; i++ {
+					expectedUser := fmt.Sprintf("level%d", 3-i)
+					found := false
+					for _, user := range implicitUsers {
+						if user == expectedUser {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("Expected user %s not found in implicit users: %v", expectedUser, implicitUsers)
+					}
+				}
+			})
+
+			// Test implicit roles for different users
+			t.Run("DifferentUsersImplicitRoles", func(t *testing.T) {
+				for i := 0; i <= 3; i++ {
+					user := fmt.Sprintf("level%d", i)
+					implicitRoles, err := e.GetImplicitRolesForUser(user)
+					if err != nil {
+						t.Fatalf("GetImplicitRolesForUser(%s) error: %v", user, err)
+					}
+
+					// Verify that the number of returned roles does not exceed maxHierarchyLevel
+					if len(implicitRoles) > tc.maxLevel {
+						t.Errorf("GetImplicitRolesForUser(%s): got %d roles, should not exceed maxHierarchyLevel %d",
+							user, len(implicitRoles), tc.maxLevel)
+					}
+				}
+			})
+		})
+	}
+}
+
+func testGetImplicitObjectPatternsForUser(t *testing.T, e *Enforcer, user string, domain string, action string, res []string) {
+	t.Helper()
+	myRes, err := e.GetImplicitObjectPatternsForUser(user, domain, action)
+	if err != nil {
+		t.Error("Implicit object patterns for ", user, " under domain ", domain, " with action ", action, " could not be fetched: ", err.Error())
+	}
+	t.Log("Implicit object patterns for ", user, " under domain ", domain, " with action ", action, ": ", myRes)
+
+	if !util.SetEquals(res, myRes) {
+		t.Error("Implicit object patterns for ", user, " under domain ", domain, " with action ", action, ": ", myRes, ", supposed to be ", res)
+	}
+}
+
+func TestGetImplicitObjectPatternsForUser(t *testing.T) {
+	// Test with domain pattern model
+	e, _ := NewEnforcer("examples/rbac_with_domain_pattern_model.conf", "examples/rbac_with_domain_pattern_policy.csv")
+	e.AddNamedDomainMatchingFunc("g", "KeyMatch", util.KeyMatch)
+
+	// Test case 1: admin user with wildcard domain access
+	testGetImplicitObjectPatternsForUser(t, e, "admin", "domain1", "read", []string{"data1", "data3"})
+	testGetImplicitObjectPatternsForUser(t, e, "admin", "domain1", "write", []string{"data1"})
+
+	// Test case 2: alice user inheriting admin role in domain2
+	testGetImplicitObjectPatternsForUser(t, e, "alice", "domain2", "read", []string{"data2", "data3"})
+	testGetImplicitObjectPatternsForUser(t, e, "alice", "domain2", "write", []string{"data2"})
+
+	// Test case 3: bob user with specific domain access
+	testGetImplicitObjectPatternsForUser(t, e, "bob", "domain2", "read", []string{"data2", "data3"})
+	testGetImplicitObjectPatternsForUser(t, e, "bob", "domain2", "write", []string{"data2"})
+
+	// Test case 4: non-existent domain (admin has wildcard access to data3)
+	testGetImplicitObjectPatternsForUser(t, e, "admin", "non_existent", "read", []string{"data3"})
+
+	// Test case 5: non-existent action
+	testGetImplicitObjectPatternsForUser(t, e, "admin", "domain1", "non_existent", []string{})
 }

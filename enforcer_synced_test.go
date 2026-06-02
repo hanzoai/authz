@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
-	"github.com/hanzoai/authz/errors"
-	"github.com/hanzoai/authz/util"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/casbin/casbin/v3/errors"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func testEnforceSync(t *testing.T, e *SyncedEnforcer, sub string, obj interface{}, act string, res bool) {
@@ -72,7 +73,10 @@ func TestStopAutoLoadPolicy(t *testing.T) {
 
 func testSyncedEnforcerGetPolicy(t *testing.T, e *SyncedEnforcer, res [][]string) {
 	t.Helper()
-	myRes := e.GetPolicy()
+	myRes, err := e.GetPolicy()
+	if err != nil {
+		t.Error(err)
+	}
 
 	if !util.SortedArray2DEquals(res, myRes) {
 		t.Error("Policy: ", myRes, ", supposed to be ", res)

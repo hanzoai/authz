@@ -15,6 +15,7 @@
 package util
 
 import (
+	"encoding/json"
 	"regexp"
 	"sort"
 	"strings"
@@ -23,18 +24,26 @@ import (
 
 var evalReg = regexp.MustCompile(`\beval\((?P<rule>[^)]*)\)`)
 
-var escapeAssertionRegex = regexp.MustCompile(`\b((r|p)[0-9]*)\.`)
+var escapeAssertionRegex = regexp.MustCompile(`([()\s|&,=!><+\-*/]|^)((r|p)[0-9]*)\.`)
 
-var numericRegex = regexp.MustCompile(`^-?\d+(?:\.\d+)?$`)
-
-func IsNumeric(s string) bool {
-	return numericRegex.MatchString(s)
+func JsonToMap(jsonStr string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(jsonStr), &result)
+	if err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 // EscapeAssertion escapes the dots in the assertion, because the expression evaluation doesn't support such variable names.
 func EscapeAssertion(s string) string {
 	s = escapeAssertionRegex.ReplaceAllStringFunc(s, func(m string) string {
-		return strings.Replace(m, ".", "_", 1)
+		// Replace only the last dot with underscore (preserve the prefix character)
+		lastDotIdx := strings.LastIndex(m, ".")
+		if lastDotIdx > 0 {
+			return m[:lastDotIdx] + "_"
+		}
+		return m
 	})
 	return s
 }
@@ -76,21 +85,23 @@ func Array2DEquals(a [][]string, b [][]string) bool {
 	return true
 }
 
-// SortArray2D  Sorts the two-dimensional string array
+// SortArray2D  Sorts the two-dimensional string array.
 func SortArray2D(arr [][]string) {
-	if len(arr) != 0 {
-		sort.Slice(arr, func(i, j int) bool {
-			elementLen := len(arr[0])
-			for k := 0; k < elementLen; k++ {
-				if arr[i][k] < arr[j][k] {
-					return true
-				} else if arr[i][k] > arr[j][k] {
-					return false
-				}
-			}
-			return true
-		})
+	if len(arr) == 0 {
+		return
 	}
+	sort.Slice(arr, func(i, j int) bool {
+		minArrLen := len(arr[i])
+		if len(arr[j]) < minArrLen {
+			minArrLen = len(arr[j])
+		}
+		for k := 0; k < minArrLen; k++ {
+			if arr[i][k] != arr[j][k] {
+				return arr[i][k] < arr[j][k]
+			}
+		}
+		return len(arr[i]) < len(arr[j])
+	})
 }
 
 // SortedArray2DEquals determines whether two 2-dimensional string arrays are identical.
@@ -155,7 +166,7 @@ func SetEquals(a []string, b []string) bool {
 	return true
 }
 
-// SetEquals determines whether two string sets are identical.
+// SetEquals determines whether two int sets are identical.
 func SetEqualsInt(a []int, b []int) bool {
 	if len(a) != len(b) {
 		return false
@@ -172,7 +183,7 @@ func SetEqualsInt(a []int, b []int) bool {
 	return true
 }
 
-// SetEquals determines whether two string sets are identical.
+// Set2DEquals determines whether two string slice sets are identical.
 func Set2DEquals(a [][]string, b [][]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -229,12 +240,12 @@ func SetSubtract(a []string, b []string) []string {
 	return diff
 }
 
-// HasEval determine whether matcher contains function eval
+// HasEval determine whether matcher contains function eval.
 func HasEval(s string) bool {
 	return evalReg.MatchString(s)
 }
 
-// ReplaceEval replace function eval with the value of its parameters
+// ReplaceEval replace function eval with the value of its parameters.
 func ReplaceEval(s string, rule string) string {
 	return evalReg.ReplaceAllString(s, "("+rule+")")
 }
@@ -255,7 +266,7 @@ func ReplaceEvalWithMap(src string, sets map[string]string) string {
 	})
 }
 
-// GetEvalValue returns the parameters of function eval
+// GetEvalValue returns the parameters of function eval.
 func GetEvalValue(s string) []string {
 	subMatch := evalReg.FindAllStringSubmatch(s, -1)
 	var rules []string
@@ -263,6 +274,41 @@ func GetEvalValue(s string) []string {
 		rules = append(rules, rule[1])
 	}
 	return rules
+}
+
+// EscapeStringLiterals escapes backslashes in string literals within an expression
+// to ensure consistent handling between govaluate (which interprets escape sequences)
+// and CSV parsing (which treats backslashes as literal characters).
+// This function doubles all backslashes within single-quoted and double-quoted strings.
+func EscapeStringLiterals(expr string) string {
+	var result strings.Builder
+	inString := false
+	var quote rune
+
+	for i := 0; i < len(expr); i++ {
+		ch := rune(expr[i])
+
+		if inString {
+			result.WriteRune(ch)
+			if ch == '\\' {
+				// Found a backslash inside a string - double it
+				result.WriteRune('\\')
+			} else if ch == quote {
+				// End of string literal
+				inString = false
+			}
+			continue
+		}
+
+		// Not inside a string literal
+		if ch == '\'' || ch == '"' {
+			inString = true
+			quote = ch
+		}
+		result.WriteRune(ch)
+	}
+
+	return result.String()
 }
 
 func RemoveDuplicateElement(s []string) []string {

@@ -1,14 +1,14 @@
-package authz
+package casbin
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func BenchmarkRoleManagerSmall(b *testing.B) {
-	e, _ := NewEnforcer("examples/rbac_model.conf", false)
+	e, _ := NewEnforcer("examples/rbac_model.conf")
 	// Do not rebuild the role inheritance relations for every AddGroupingPolicy() call.
 	e.EnableAutoBuildRoleLinks(false)
 
@@ -45,7 +45,7 @@ func BenchmarkRoleManagerSmall(b *testing.B) {
 }
 
 func BenchmarkRoleManagerMedium(b *testing.B) {
-	e, _ := NewEnforcer("examples/rbac_model.conf", false)
+	e, _ := NewEnforcer("examples/rbac_model.conf")
 	// Do not rebuild the role inheritance relations for every AddGroupingPolicy() call.
 	e.EnableAutoBuildRoleLinks(false)
 
@@ -86,7 +86,7 @@ func BenchmarkRoleManagerMedium(b *testing.B) {
 }
 
 func BenchmarkRoleManagerLarge(b *testing.B) {
-	e, _ := NewEnforcer("examples/rbac_model.conf", false)
+	e, _ := NewEnforcer("examples/rbac_model.conf")
 
 	// 10000 roles, 1000 resources.
 	pPolicies := make([][]string, 0)
@@ -166,7 +166,6 @@ func BenchmarkHasLinkWithDomainPatternLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = rm.HasLink("staffUser1001", "staff001", "/orgs/1/sites/site001")
 	}
-
 }
 
 func BenchmarkHasLinkWithPatternAndDomainPatternLarge(b *testing.B) {
@@ -178,4 +177,19 @@ func BenchmarkHasLinkWithPatternAndDomainPatternLarge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = rm.HasLink("staffUser1001", "staff001", "/orgs/1/sites/site001")
 	}
+}
+
+// BenchmarkConcurrentHasLinkWithMatching benchmarks concurrent HasLink performance with matching functions.
+// Performance test for concurrent access with temporary role creation.
+func BenchmarkConcurrentHasLinkWithMatching(b *testing.B) {
+	e, _ := NewEnforcer("examples/rbac_with_pattern_model.conf", "examples/rbac_with_pattern_policy.csv")
+	e.AddNamedMatchingFunc("g2", "keyMatch2", util.KeyMatch2)
+	rm := e.GetRoleManager()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = rm.HasLink("alice", "/book/123")
+		}
+	})
 }

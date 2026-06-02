@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
-	"fmt"
 	"testing"
 
-	"github.com/hanzoai/authz/log"
-	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
-	"github.com/hanzoai/authz/rbac"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/model"
+	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
+	"github.com/casbin/casbin/v3/rbac"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func testEnforce(t *testing.T, e *Enforcer, sub interface{}, obj interface{}, act string, res bool) {
@@ -242,6 +241,87 @@ func TestRBACModelWithDomainsAtRuntimeMockAdapter(t *testing.T) {
 	testDomainEnforce(t, e, "bob", "domain2", "data2", "read", false)
 }
 
+func TestRBACModelWithDomainTokenRename(t *testing.T) {
+	// Test that renaming the domain token from "dom" to another name (e.g., "dom1")
+	// still works correctly. This is a regression test for the issue where the
+	// hardcoded "r_dom" and "p_dom" strings prevented proper domain matching.
+
+	// Test with standard "dom" token
+	modelText1 := `
+[request_definition]
+r = sub, dom, obj, act
+
+[policy_definition]
+p = sub, dom, obj, act
+
+[role_definition]
+g = _, _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub, r.dom) && keyMatch(r.dom, p.dom) && r.obj == p.obj && r.act == p.act
+`
+	m1, _ := model.NewModelFromString(modelText1)
+	e1, _ := NewEnforcer(m1)
+	_, _ = e1.AddPolicy("admin", "domain1", "data1", "read")
+	_, _ = e1.AddGroupingPolicy("alice", "admin", "domain*")
+
+	testDomainEnforce(t, e1, "alice", "domain1", "data1", "read", true)
+	testDomainEnforce(t, e1, "alice", "domain2", "data1", "read", false)
+
+	// Test with renamed "dom1" token
+	modelText2 := `
+[request_definition]
+r = sub, dom1, obj, act
+
+[policy_definition]
+p = sub, dom1, obj, act
+
+[role_definition]
+g = _, _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub, r.dom1) && keyMatch(r.dom1, p.dom1) && r.obj == p.obj && r.act == p.act
+`
+	m2, _ := model.NewModelFromString(modelText2)
+	e2, _ := NewEnforcer(m2)
+	_, _ = e2.AddPolicy("admin", "domain1", "data1", "read")
+	_, _ = e2.AddGroupingPolicy("alice", "admin", "domain*")
+
+	testDomainEnforce(t, e2, "alice", "domain1", "data1", "read", true)
+	testDomainEnforce(t, e2, "alice", "domain2", "data1", "read", false)
+
+	// Test with renamed "tenant" token
+	modelText3 := `
+[request_definition]
+r = sub, tenant, obj, act
+
+[policy_definition]
+p = sub, tenant, obj, act
+
+[role_definition]
+g = _, _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub, r.tenant) && keyMatch(r.tenant, p.tenant) && r.obj == p.obj && r.act == p.act
+`
+	m3, _ := model.NewModelFromString(modelText3)
+	e3, _ := NewEnforcer(m3)
+	_, _ = e3.AddPolicy("admin", "domain1", "data1", "read")
+	_, _ = e3.AddGroupingPolicy("alice", "admin", "domain*")
+
+	testDomainEnforce(t, e3, "alice", "domain1", "data1", "read", true)
+	testDomainEnforce(t, e3, "alice", "domain2", "data1", "read", false)
+}
+
 func TestRBACModelWithDeny(t *testing.T) {
 	e, _ := NewEnforcer("examples/rbac_with_deny_model.conf", "examples/rbac_with_deny_policy.csv")
 
@@ -333,7 +413,11 @@ func TestRBACModelWithPattern(t *testing.T) {
 func TestRBACModelWithDifferentTypesOfRoles(t *testing.T) {
 	e, _ := NewEnforcer("examples/rbac_with_different_types_of_roles_model.conf", "examples/rbac_with_different_types_of_roles_policy.csv")
 
-	g := e.GetNamedGroupingPolicy("g")
+	g, err := e.GetNamedGroupingPolicy("g")
+	if err != nil {
+		t.Error(err)
+	}
+
 	for _, gp := range g {
 		if len(gp) != 5 {
 			t.Error("g parameters' num isn't 5")
@@ -392,8 +476,7 @@ func (rm *testCustomRoleManager) GetDomains(name string) ([]string, error) {
 func (rm *testCustomRoleManager) GetAllDomains() ([]string, error) {
 	return []string{}, nil
 }
-func (rm *testCustomRoleManager) PrintRoles() error           { return nil }
-func (rm *testCustomRoleManager) SetLogger(logger log.Logger) {}
+func (rm *testCustomRoleManager) PrintRoles() error { return nil }
 
 func (rm *testCustomRoleManager) Match(str string, pattern string) bool                   { return true }
 func (rm *testCustomRoleManager) AddMatchingFunc(name string, fn rbac.MatchingFunc)       {}
@@ -406,6 +489,18 @@ func (rm *testCustomRoleManager) SetLinkConditionFuncParams(userName, roleName s
 func (rm *testCustomRoleManager) AddDomainLinkConditionFunc(user string, role string, domain string, fn rbac.LinkConditionFunc) {
 }
 func (rm *testCustomRoleManager) SetDomainLinkConditionFuncParams(user string, role string, domain string, params ...string) {
+}
+
+func (rm *testCustomRoleManager) DeleteDomain(domain string) error {
+	return nil
+}
+
+func (rm *testCustomRoleManager) GetImplicitRoles(name string, domain ...string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (rm *testCustomRoleManager) GetImplicitUsers(name string, domain ...string) ([]string, error) {
+	return []string{}, nil
 }
 
 func TestRBACModelWithCustomRoleManager(t *testing.T) {
@@ -422,78 +517,6 @@ func TestRBACModelWithCustomRoleManager(t *testing.T) {
 	testEnforce(t, e, "bob", "data1", "write", false)
 	testEnforce(t, e, "bob", "data2", "read", false)
 	testEnforce(t, e, "bob", "data2", "write", true)
-}
-
-type testResource struct {
-	Name  string
-	Owner string
-}
-
-func newTestResource(name string, owner string) testResource {
-	r := testResource{}
-	r.Name = name
-	r.Owner = owner
-	return r
-}
-
-func TestABACModel(t *testing.T) {
-	e, _ := NewEnforcer("examples/abac_model.conf")
-
-	data1 := newTestResource("data1", "alice")
-	data2 := newTestResource("data2", "bob")
-
-	testEnforce(t, e, "alice", data1, "read", true)
-	testEnforce(t, e, "alice", data1, "write", true)
-	testEnforce(t, e, "alice", data2, "read", false)
-	testEnforce(t, e, "alice", data2, "write", false)
-	testEnforce(t, e, "bob", data1, "read", false)
-	testEnforce(t, e, "bob", data1, "write", false)
-	testEnforce(t, e, "bob", data2, "read", true)
-	testEnforce(t, e, "bob", data2, "write", true)
-}
-
-func TestABACJsonRequest(t *testing.T) {
-	e, _ := NewEnforcer("examples/abac_model.conf")
-	e.EnableAcceptJsonRequest(true)
-
-	data1Json := `{ "Name": "data1", "Owner": "alice"}`
-	data2Json := `{ "Name": "data2", "Owner": "bob"}`
-
-	testEnforce(t, e, "alice", data1Json, "read", true)
-	testEnforce(t, e, "alice", data1Json, "write", true)
-	testEnforce(t, e, "alice", data2Json, "read", false)
-	testEnforce(t, e, "alice", data2Json, "write", false)
-	testEnforce(t, e, "bob", data1Json, "read", false)
-	testEnforce(t, e, "bob", data1Json, "write", false)
-	testEnforce(t, e, "bob", data2Json, "read", true)
-	testEnforce(t, e, "bob", data2Json, "write", true)
-
-	e, _ = NewEnforcer("examples/abac_not_using_policy_model.conf", "examples/abac_rule_effect_policy.csv")
-	e.EnableAcceptJsonRequest(true)
-
-	testEnforce(t, e, "alice", data1Json, "read", true)
-	testEnforce(t, e, "alice", data1Json, "write", true)
-	testEnforce(t, e, "alice", data2Json, "read", false)
-	testEnforce(t, e, "alice", data2Json, "write", false)
-
-	e, _ = NewEnforcer("examples/abac_rule_model.conf", "examples/abac_rule_policy.csv")
-	e.EnableAcceptJsonRequest(true)
-	sub1Json := `{"Name": "alice", "Age": 16}`
-	sub2Json := `{"Name": "alice", "Age": 20}`
-	sub3Json := `{"Name": "alice", "Age": 65}`
-
-	testEnforce(t, e, sub1Json, "/data1", "read", false)
-	testEnforce(t, e, sub1Json, "/data2", "read", false)
-	testEnforce(t, e, sub1Json, "/data1", "write", false)
-	testEnforce(t, e, sub1Json, "/data2", "write", true)
-	testEnforce(t, e, sub2Json, "/data1", "read", true)
-	testEnforce(t, e, sub2Json, "/data2", "read", false)
-	testEnforce(t, e, sub2Json, "/data1", "write", false)
-	testEnforce(t, e, sub2Json, "/data2", "write", true)
-	testEnforce(t, e, sub3Json, "/data1", "read", true)
-	testEnforce(t, e, sub3Json, "/data2", "read", false)
-	testEnforce(t, e, sub3Json, "/data1", "write", false)
-	testEnforce(t, e, sub3Json, "/data2", "write", false)
 }
 
 func TestKeyMatchModel(t *testing.T) {
@@ -545,7 +568,7 @@ func CustomFunctionWrapper(args ...interface{}) (interface{}, error) {
 	key1 := args[0].(string)
 	key2 := args[1].(string)
 
-	return bool(CustomFunction(key1, key2)), nil
+	return CustomFunction(key1, key2), nil
 }
 
 func TestKeyMatchCustomModel(t *testing.T) {
@@ -630,56 +653,6 @@ func TestRBACModelInMultiLines(t *testing.T) {
 	testEnforce(t, e, "bob", "data1", "write", false)
 	testEnforce(t, e, "bob", "data2", "read", false)
 	testEnforce(t, e, "bob", "data2", "write", true)
-}
-
-type testSub struct {
-	Name string
-	Age  int
-}
-
-func newTestSubject(name string, age int) testSub {
-	s := testSub{}
-	s.Name = name
-	s.Age = age
-	return s
-}
-
-func TestABACNotUsingPolicy(t *testing.T) {
-	e, _ := NewEnforcer("examples/abac_not_using_policy_model.conf", "examples/abac_rule_effect_policy.csv")
-	data1 := newTestResource("data1", "alice")
-	data2 := newTestResource("data2", "bob")
-
-	testEnforce(t, e, "alice", data1, "read", true)
-	testEnforce(t, e, "alice", data1, "write", true)
-	testEnforce(t, e, "alice", data2, "read", false)
-	testEnforce(t, e, "alice", data2, "write", false)
-}
-
-func TestABACPolicy(t *testing.T) {
-	e, _ := NewEnforcer("examples/abac_rule_model.conf", "examples/abac_rule_policy.csv")
-	m := e.GetModel()
-	for sec, ast := range m {
-		fmt.Println(sec)
-		for ptype, p := range ast {
-			fmt.Println(ptype, p)
-		}
-	}
-	sub1 := newTestSubject("alice", 16)
-	sub2 := newTestSubject("alice", 20)
-	sub3 := newTestSubject("alice", 65)
-
-	testEnforce(t, e, sub1, "/data1", "read", false)
-	testEnforce(t, e, sub1, "/data2", "read", false)
-	testEnforce(t, e, sub1, "/data1", "write", false)
-	testEnforce(t, e, sub1, "/data2", "write", true)
-	testEnforce(t, e, sub2, "/data1", "read", true)
-	testEnforce(t, e, sub2, "/data2", "read", false)
-	testEnforce(t, e, sub2, "/data1", "write", false)
-	testEnforce(t, e, sub2, "/data2", "write", true)
-	testEnforce(t, e, sub3, "/data1", "read", true)
-	testEnforce(t, e, sub3, "/data2", "read", false)
-	testEnforce(t, e, sub3, "/data1", "write", false)
-	testEnforce(t, e, sub3, "/data2", "write", false)
 }
 
 func TestCommentModel(t *testing.T) {
@@ -794,4 +767,22 @@ func TestTemporalRolesModelWithDomain(t *testing.T) {
 	testDomainEnforce(t, e, "alice", "domain_not_exist", "data7", "write", false)
 	testDomainEnforce(t, e, "alice", "domain_not_exist", "data8", "read", false)
 	testDomainEnforce(t, e, "alice", "domain_not_exist", "data8", "write", false)
+}
+
+func TestReBACModel(t *testing.T) {
+	e, _ := NewEnforcer("examples/rebac_model.conf", "examples/rebac_policy.csv")
+
+	testEnforce(t, e, "alice", "doc1", "read", true)
+	testEnforce(t, e, "alice", "doc1", "write", false)
+	testEnforce(t, e, "alice", "doc2", "read", false)
+	testEnforce(t, e, "alice", "doc2", "write", false)
+	testEnforce(t, e, "alice", "doc3", "read", false)
+	testEnforce(t, e, "alice", "doc3", "write", false)
+
+	testEnforce(t, e, "bob", "doc1", "read", false)
+	testEnforce(t, e, "bob", "doc1", "write", false)
+	testEnforce(t, e, "bob", "doc2", "read", true)
+	testEnforce(t, e, "bob", "doc2", "write", false)
+	testEnforce(t, e, "bob", "doc3", "read", false)
+	testEnforce(t, e, "bob", "doc3", "write", false)
 }
