@@ -12,21 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
-	"github.com/Knetic/govaluate"
-	"github.com/hanzoai/authz/effector"
-	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/authz/persist"
-	"github.com/hanzoai/authz/rbac"
+	"github.com/casbin/casbin/v3/effector"
+	"github.com/casbin/casbin/v3/model"
+	"github.com/casbin/casbin/v3/persist"
+	"github.com/casbin/casbin/v3/rbac"
+	"github.com/casbin/govaluate"
 )
 
 var _ IEnforcer = &Enforcer{}
 var _ IEnforcer = &SyncedEnforcer{}
 var _ IEnforcer = &CachedEnforcer{}
 
-// IEnforcer is the API interface of Enforcer
+// IEnforcer is the API interface of Enforcer.
 type IEnforcer interface {
 	/* Enforcer API */
 	InitWithFile(modelPath string, policyPath string) error
@@ -41,6 +41,7 @@ type IEnforcer interface {
 	GetRoleManager() rbac.RoleManager
 	SetRoleManager(rm rbac.RoleManager)
 	SetEffector(eft effector.Effector)
+	SetAIConfig(config AIConfig)
 	ClearPolicy()
 	LoadPolicy() error
 	LoadFilteredPolicy(filter interface{}) error
@@ -48,7 +49,6 @@ type IEnforcer interface {
 	IsFiltered() bool
 	SavePolicy() error
 	EnableEnforce(enable bool)
-	EnableLog(enable bool)
 	EnableAutoNotifyWatcher(enable bool)
 	EnableAutoSave(autoSave bool)
 	EnableAutoBuildRoleLinks(autoBuildRoleLinks bool)
@@ -59,6 +59,7 @@ type IEnforcer interface {
 	EnforceExWithMatcher(matcher string, rvals ...interface{}) (bool, []string, error)
 	BatchEnforce(requests [][]interface{}) ([]bool, error)
 	BatchEnforceWithMatcher(matcher string, requests [][]interface{}) ([]bool, error)
+	Explain(rvals ...interface{}) (string, error)
 
 	/* RBAC API */
 	GetRolesForUser(name string, domain ...string) ([]string, error)
@@ -69,8 +70,8 @@ type IEnforcer interface {
 	AddPermissionsForUser(user string, permissions ...[]string) (bool, error)
 	DeletePermissionForUser(user string, permission ...string) (bool, error)
 	DeletePermissionsForUser(user string) (bool, error)
-	GetPermissionsForUser(user string, domain ...string) [][]string
-	HasPermissionForUser(user string, permission ...string) bool
+	GetPermissionsForUser(user string, domain ...string) ([][]string, error)
+	HasPermissionForUser(user string, permission ...string) (bool, error)
 	GetImplicitRolesForUser(name string, domain ...string) ([]string, error)
 	GetImplicitPermissionsForUser(user string, domain ...string) ([][]string, error)
 	GetImplicitUsersForPermission(permission ...string) ([]string, error)
@@ -86,26 +87,33 @@ type IEnforcer interface {
 	GetPermissionsForUserInDomain(user string, domain string) [][]string
 	AddRoleForUserInDomain(user string, role string, domain string) (bool, error)
 	DeleteRoleForUserInDomain(user string, role string, domain string) (bool, error)
+	GetAllUsersByDomain(domain string) ([]string, error)
+	DeleteRolesForUserInDomain(user string, domain string) (bool, error)
+	DeleteAllUsersByDomain(domain string) (bool, error)
+	DeleteDomains(domains ...string) (bool, error)
+	GetAllDomains() ([]string, error)
+	GetAllRolesByDomain(domain string) ([]string, error)
 
 	/* Management API */
-	GetAllSubjects() []string
-	GetAllNamedSubjects(ptype string) []string
-	GetAllObjects() []string
-	GetAllNamedObjects(ptype string) []string
-	GetAllActions() []string
-	GetAllNamedActions(ptype string) []string
-	GetAllRoles() []string
-	GetAllNamedRoles(ptype string) []string
-	GetPolicy() [][]string
-	GetFilteredPolicy(fieldIndex int, fieldValues ...string) [][]string
-	GetNamedPolicy(ptype string) [][]string
-	GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string
-	GetGroupingPolicy() [][]string
-	GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) [][]string
-	GetNamedGroupingPolicy(ptype string) [][]string
-	GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) [][]string
-	HasPolicy(params ...interface{}) bool
-	HasNamedPolicy(ptype string, params ...interface{}) bool
+	GetAllSubjects() ([]string, error)
+	GetAllNamedSubjects(ptype string) ([]string, error)
+	GetAllObjects() ([]string, error)
+	GetAllNamedObjects(ptype string) ([]string, error)
+	GetAllActions() ([]string, error)
+	GetAllNamedActions(ptype string) ([]string, error)
+	GetAllRoles() ([]string, error)
+	GetAllNamedRoles(ptype string) ([]string, error)
+	GetAllUsers() ([]string, error)
+	GetPolicy() ([][]string, error)
+	GetFilteredPolicy(fieldIndex int, fieldValues ...string) ([][]string, error)
+	GetNamedPolicy(ptype string) ([][]string, error)
+	GetFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) ([][]string, error)
+	GetGroupingPolicy() ([][]string, error)
+	GetFilteredGroupingPolicy(fieldIndex int, fieldValues ...string) ([][]string, error)
+	GetNamedGroupingPolicy(ptype string) ([][]string, error)
+	GetFilteredNamedGroupingPolicy(ptype string, fieldIndex int, fieldValues ...string) ([][]string, error)
+	HasPolicy(params ...interface{}) (bool, error)
+	HasNamedPolicy(ptype string, params ...interface{}) (bool, error)
 	AddPolicy(params ...interface{}) (bool, error)
 	AddPolicies(rules [][]string) (bool, error)
 	AddNamedPolicy(ptype string, params ...interface{}) (bool, error)
@@ -118,8 +126,8 @@ type IEnforcer interface {
 	RemoveNamedPolicy(ptype string, params ...interface{}) (bool, error)
 	RemoveNamedPolicies(ptype string, rules [][]string) (bool, error)
 	RemoveFilteredNamedPolicy(ptype string, fieldIndex int, fieldValues ...string) (bool, error)
-	HasGroupingPolicy(params ...interface{}) bool
-	HasNamedGroupingPolicy(ptype string, params ...interface{}) bool
+	HasGroupingPolicy(params ...interface{}) (bool, error)
+	HasNamedGroupingPolicy(ptype string, params ...interface{}) (bool, error)
 	AddGroupingPolicy(params ...interface{}) (bool, error)
 	AddGroupingPolicies(rules [][]string) (bool, error)
 	AddGroupingPoliciesEx(rules [][]string) (bool, error)

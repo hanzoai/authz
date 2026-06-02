@@ -14,8 +14,6 @@
 
 package rbac
 
-import "github.com/hanzoai/authz/log"
-
 type MatchingFunc func(arg1 string, arg2 string) bool
 
 type LinkConditionFunc = func(args ...string) (bool, error)
@@ -41,24 +39,30 @@ type RoleManager interface {
 	// GetUsers gets the users that inherits a role.
 	// domain is a prefix to the users (can be used for other purposes).
 	GetUsers(name string, domain ...string) ([]string, error)
+	// GetImplicitRoles gets the implicit roles that a user inherits, respecting maxHierarchyLevel.
+	// domain is a prefix to the roles (can be used for other purposes).
+	GetImplicitRoles(name string, domain ...string) ([]string, error)
+	// GetImplicitUsers gets the implicit users that inherits a role, respecting maxHierarchyLevel.
+	// domain is a prefix to the users (can be used for other purposes).
+	GetImplicitUsers(name string, domain ...string) ([]string, error)
 	// GetDomains gets domains that a user has
 	GetDomains(name string) ([]string, error)
 	// GetAllDomains gets all domains
 	GetAllDomains() ([]string, error)
 	// PrintRoles prints all the roles to log.
 	PrintRoles() error
-	// SetLogger sets role manager's logger.
-	SetLogger(logger log.Logger)
 	// Match matches the domain with the pattern
 	Match(str string, pattern string) bool
 	// AddMatchingFunc adds the matching function
 	AddMatchingFunc(name string, fn MatchingFunc)
 	// AddDomainMatchingFunc adds the domain matching function
 	AddDomainMatchingFunc(name string, fn MatchingFunc)
+	// DeleteDomain deletes all data of a domain in the role manager.
+	DeleteDomain(domain string) error
 }
 
 // ConditionalRoleManager provides interface to define the operations for managing roles.
-// Link with conditions is supported
+// Link with conditions is supported.
 type ConditionalRoleManager interface {
 	RoleManager
 

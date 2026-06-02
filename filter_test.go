@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"testing"
 
-	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
-	"github.com/hanzoai/authz/util"
+	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func TestInitFilteredAdapter(t *testing.T) {
@@ -133,7 +133,7 @@ func TestAppendFilteredPolicy(t *testing.T) {
 	testHasPolicy(t, e, []string{"admin", "domain1", "data1", "read"}, true)
 	testHasPolicy(t, e, []string{"admin", "domain2", "data2", "read"}, false)
 
-	//disable clear policy and load second domain
+	// disable clear policy and load second domain
 	if err := e.LoadIncrementalFilteredPolicy(&fileadapter.Filter{
 		P: []string{"", "domain2"},
 		G: []string{"", "", "domain2"},
@@ -141,7 +141,7 @@ func TestAppendFilteredPolicy(t *testing.T) {
 		t.Errorf("unexpected error in LoadFilteredPolicy: %v", err)
 	}
 
-	//both domain policies should be loaded
+	// both domain policies should be loaded
 	testHasPolicy(t, e, []string{"admin", "domain1", "data1", "read"}, true)
 	testHasPolicy(t, e, []string{"admin", "domain2", "data2", "read"}, true)
 }

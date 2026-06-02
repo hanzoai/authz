@@ -17,13 +17,11 @@ package persist
 import (
 	"context"
 
-	"github.com/hanzoai/authz/model"
+	"github.com/casbin/casbin/v3/model"
 )
 
 // ContextAdapter provides a context-aware interface for Casbin adapters.
 type ContextAdapter interface {
-	Adapter
-
 	// LoadPolicyCtx loads all policy rules from the storage with context.
 	LoadPolicyCtx(ctx context.Context, model model.Model) error
 	// SavePolicyCtx saves all policy rules to the storage with context.

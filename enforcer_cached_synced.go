@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/hanzoai/authz/persist/cache"
+	"github.com/casbin/casbin/v3/persist/cache"
 )
 
-// SyncedCachedEnforcer wraps Enforcer and provides decision sync cache
+// SyncedCachedEnforcer wraps Enforcer and provides decision sync cache.
 type SyncedCachedEnforcer struct {
 	*SyncedEnforcer
 	expireTime  time.Duration
@@ -56,7 +56,7 @@ func (e *SyncedCachedEnforcer) EnableCache(enableCache bool) {
 }
 
 // Enforce decides whether a "subject" can access a "object" with the operation "action", input parameters are usually: (sub, obj, act).
-// if rvals is not string , ingore the cache
+// if rvals is not string , ignore the cache.
 func (e *SyncedCachedEnforcer) Enforce(rvals ...interface{}) (bool, error) {
 	if atomic.LoadInt32(&e.enableCache) == 0 {
 		return e.SyncedEnforcer.Enforce(rvals...)
@@ -129,7 +129,7 @@ func (e *SyncedCachedEnforcer) SetExpireTime(expireTime time.Duration) {
 	e.expireTime = expireTime
 }
 
-// SetCache need to be sync cache
+// SetCache need to be sync cache.
 func (e *SyncedCachedEnforcer) SetCache(c cache.Cache) {
 	e.locker.Lock()
 	defer e.locker.Unlock()

@@ -19,9 +19,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/authz/persist"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/model"
+	"github.com/casbin/casbin/v3/persist"
+	"github.com/casbin/casbin/v3/util"
 )
 
 // Adapter is the string adapter for Casbin.

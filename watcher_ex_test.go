@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"testing"
 
-	"github.com/hanzoai/authz/model"
+	"github.com/casbin/casbin/v3/model"
 )
 
 type SampleWatcherEx struct {
