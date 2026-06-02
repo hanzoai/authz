@@ -17,7 +17,7 @@ package effector
 import (
 	"errors"
 
-	"github.com/hanzoai/authz/constant"
+	"github.com/casbin/casbin/v3/constant"
 )
 
 // DefaultEffector is default effector for Casbin.

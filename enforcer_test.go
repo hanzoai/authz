@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
-	"github.com/hanzoai/authz/model"
-	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/detector"
+	"github.com/casbin/casbin/v3/model"
+	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func TestKeyMatchModelInMemory(t *testing.T) {
@@ -275,21 +277,10 @@ func TestEnableEnforce(t *testing.T) {
 }
 
 func TestEnableLog(t *testing.T) {
-	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv", true)
-	// The log is enabled by default, so the above is the same with:
-	// e := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
+	// This test is now a no-op since the logger has been removed
+	// Keeping it for backward compatibility, but it just tests enforcement
+	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
 
-	testEnforce(t, e, "alice", "data1", "read", true)
-	testEnforce(t, e, "alice", "data1", "write", false)
-	testEnforce(t, e, "alice", "data2", "read", false)
-	testEnforce(t, e, "alice", "data2", "write", false)
-	testEnforce(t, e, "bob", "data1", "read", false)
-	testEnforce(t, e, "bob", "data1", "write", false)
-	testEnforce(t, e, "bob", "data2", "read", false)
-	testEnforce(t, e, "bob", "data2", "write", true)
-
-	// The log can also be enabled or disabled at run-time.
-	e.EnableLog(false)
 	testEnforce(t, e, "alice", "data1", "read", true)
 	testEnforce(t, e, "alice", "data1", "write", false)
 	testEnforce(t, e, "alice", "data2", "read", false)
@@ -485,7 +476,9 @@ func TestEnforceEx(t *testing.T) {
 }
 
 func TestEnforceExLog(t *testing.T) {
-	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv", true)
+	// This test was previously named for logging, but actually tests EnforceEx explain functionality
+	// Logger parameter has been removed, but the test still validates explain behavior
+	e, _ := NewEnforcer("examples/basic_model.conf", "examples/basic_policy.csv")
 
 	testEnforceEx(t, e, "alice", "data1", "read", []string{"alice", "data1", "read"})
 	testEnforceEx(t, e, "alice", "data1", "write", []string{})
@@ -732,4 +725,79 @@ func TestLinkConditionFunc(t *testing.T) {
 	testDomainEnforce(t, e, "alice", "domain4", "data4", "write", true)
 	testDomainEnforce(t, e, "alice", "domain5", "data5", "read", false)
 	testDomainEnforce(t, e, "alice", "domain5", "data5", "write", false)
+}
+
+func TestEnforcerWithDefaultDetector(t *testing.T) {
+	// Test that default detector is enabled and detects cycles
+	_, err := NewEnforcer("examples/rbac_model.conf", "examples/rbac_with_cycle_policy.csv")
+
+	// Expect an error because the policy contains a cycle
+	if err == nil {
+		t.Error("Expected cycle detection error when loading policy with cycle, but got nil")
+	} else {
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "cycle detected") {
+			t.Errorf("Expected error message to contain 'cycle detected', got: %s", errMsg)
+		}
+	}
+}
+
+func TestEnforcerRunDetections(t *testing.T) {
+	// Test explicit RunDetections() call
+	e, _ := NewEnforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+
+	// Should not error on valid policy
+	err := e.RunDetections()
+	if err != nil {
+		t.Errorf("Expected no error when running detections on valid policy, but got: %v", err)
+	}
+
+	// Now add a cycle manually
+	_, _ = e.AddGroupingPolicy("alice", "data2_admin")
+	_, _ = e.AddGroupingPolicy("data2_admin", "super_admin")
+	_, _ = e.AddGroupingPolicy("super_admin", "alice")
+
+	// Should detect the cycle
+	err = e.RunDetections()
+	if err == nil {
+		t.Error("Expected cycle detection error, but got nil")
+	} else {
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "cycle detected") {
+			t.Errorf("Expected error message to contain 'cycle detected', got: %s", errMsg)
+		}
+	}
+}
+
+func TestEnforcerSetDetector(t *testing.T) {
+	// Test SetDetector() method
+	e, _ := NewEnforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+
+	// Create a custom detector
+	customDetector := detector.NewDefaultDetector()
+	e.SetDetector(customDetector)
+
+	// Should still work with custom detector
+	err := e.RunDetections()
+	if err != nil {
+		t.Errorf("Expected no error with custom detector, but got: %v", err)
+	}
+}
+
+func TestEnforcerSetDetectors(t *testing.T) {
+	// Test SetDetectors() method
+	e, _ := NewEnforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+
+	// Create multiple detectors
+	detectors := []detector.Detector{
+		detector.NewDefaultDetector(),
+		detector.NewDefaultDetector(),
+	}
+	e.SetDetectors(detectors)
+
+	// Should work with multiple detectors
+	err := e.RunDetections()
+	if err != nil {
+		t.Errorf("Expected no error with multiple detectors, but got: %v", err)
+	}
 }

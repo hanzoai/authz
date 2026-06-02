@@ -14,7 +14,7 @@
 
 package authz
 
-// GetUsersForRoleInDomain gets the users that has a role inside a domain. Add by Gordon
+// GetUsersForRoleInDomain gets the users that has a role inside a domain. Add by Gordon.
 func (e *SyncedEnforcer) GetUsersForRoleInDomain(name string, domain string) []string {
 	e.m.RLock()
 	defer e.m.RUnlock()
@@ -57,4 +57,12 @@ func (e *SyncedEnforcer) DeleteRolesForUserInDomain(user string, domain string) 
 	e.m.Lock()
 	defer e.m.Unlock()
 	return e.Enforcer.DeleteRolesForUserInDomain(user, domain)
+}
+
+// DeleteDomains deletes domains from the model.
+// Returns false if the domain does not exist (aka not affected).
+func (e *SyncedEnforcer) DeleteDomains(domains ...string) (bool, error) {
+	e.m.Lock()
+	defer e.m.Unlock()
+	return e.Enforcer.DeleteDomains(domains...)
 }

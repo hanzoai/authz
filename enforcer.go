@@ -12,27 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package authz
+package casbin
 
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
 
-	"github.com/hanzoai/authz/effector"
-	"github.com/hanzoai/authz/log"
-	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/authz/persist"
-	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
-	"github.com/hanzoai/authz/rbac"
-	defaultrolemanager "github.com/hanzoai/authz/rbac/default-role-manager"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/detector"
+	"github.com/casbin/casbin/v3/effector"
+	"github.com/casbin/casbin/v3/log"
+	"github.com/casbin/casbin/v3/model"
+	"github.com/casbin/casbin/v3/persist"
+	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
+	"github.com/casbin/casbin/v3/rbac"
+	defaultrolemanager "github.com/casbin/casbin/v3/rbac/default-role-manager"
+	"github.com/casbin/casbin/v3/util"
 
-	"github.com/Knetic/govaluate"
-	"github.com/tidwall/gjson"
+	"github.com/casbin/govaluate"
 )
 
 // Enforcer is the main interface for authorization enforcement and policy management.
@@ -48,6 +47,8 @@ type Enforcer struct {
 	rmMap      map[string]rbac.RoleManager
 	condRmMap  map[string]rbac.ConditionalRoleManager
 	matcherMap sync.Map
+	logger     log.Logger
+	detectors  []detector.Detector
 
 	enabled              bool
 	autoSave             bool
@@ -56,10 +57,10 @@ type Enforcer struct {
 	autoNotifyDispatcher bool
 	acceptJsonRequest    bool
 
-	logger log.Logger
+	aiConfig AIConfig
 }
 
-// EnforceContext is used as the first element of the parameter "rvals" in method "enforce"
+// EnforceContext is used as the first element of the parameter "rvals" in method "enforce".
 type EnforceContext struct {
 	RType string
 	PType string
@@ -75,34 +76,20 @@ func (e EnforceContext) GetCacheKey() string {
 //
 // File:
 //
-//	e := authz.NewEnforcer("path/to/basic_model.conf", "path/to/basic_policy.csv")
+//	e := casbin.NewEnforcer("path/to/basic_model.conf", "path/to/basic_policy.csv")
 //
 // MySQL DB:
 //
 //	a := mysqladapter.NewDBAdapter("mysql", "mysql_username:mysql_password@tcp(127.0.0.1:3306)/")
-//	e := authz.NewEnforcer("path/to/basic_model.conf", a)
+//	e := casbin.NewEnforcer("path/to/basic_model.conf", a)
 func NewEnforcer(params ...interface{}) (*Enforcer, error) {
-	e := &Enforcer{logger: &log.DefaultLogger{}}
+	e := &Enforcer{}
 
 	parsedParamLen := 0
 	paramLen := len(params)
-	if paramLen >= 1 {
-		enableLog, ok := params[paramLen-1].(bool)
-		if ok {
-			e.EnableLog(enableLog)
-			parsedParamLen++
-		}
-	}
 
-	if paramLen-parsedParamLen >= 1 {
-		logger, ok := params[paramLen-parsedParamLen-1].(log.Logger)
-		if ok {
-			e.logger = logger
-			parsedParamLen++
-		}
-	}
-
-	if paramLen-parsedParamLen == 2 {
+	switch paramLen - parsedParamLen {
+	case 2:
 		switch p0 := params[0].(type) {
 		case string:
 			switch p1 := params[1].(type) {
@@ -128,7 +115,7 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 				}
 			}
 		}
-	} else if paramLen-parsedParamLen == 1 {
+	case 1:
 		switch p0 := params[0].(type) {
 		case string:
 			err := e.InitWithFile(p0, "")
@@ -141,9 +128,9 @@ func NewEnforcer(params ...interface{}) (*Enforcer, error) {
 				return nil, err
 			}
 		}
-	} else if paramLen-parsedParamLen == 0 {
+	case 0:
 		return e, nil
-	} else {
+	default:
 		return nil, errors.New("invalid parameters for enforcer")
 	}
 
@@ -177,7 +164,6 @@ func (e *Enforcer) InitWithModelAndAdapter(m model.Model, adapter persist.Adapte
 	e.adapter = adapter
 
 	e.model = m
-	m.SetLogger(e.logger)
 	e.model.PrintModel()
 	e.fm = model.LoadFunctionMap()
 
@@ -195,15 +181,6 @@ func (e *Enforcer) InitWithModelAndAdapter(m model.Model, adapter persist.Adapte
 	return nil
 }
 
-// SetLogger changes the current enforcer's logger.
-func (e *Enforcer) SetLogger(logger log.Logger) {
-	e.logger = logger
-	e.model.SetLogger(e.logger)
-	for k := range e.rmMap {
-		e.rmMap[k].SetLogger(e.logger)
-	}
-}
-
 func (e *Enforcer) initialize() {
 	e.rmMap = map[string]rbac.RoleManager{}
 	e.condRmMap = map[string]rbac.ConditionalRoleManager{}
@@ -217,6 +194,11 @@ func (e *Enforcer) initialize() {
 	e.autoNotifyWatcher = true
 	e.autoNotifyDispatcher = true
 	e.initRmMap()
+
+	// Initialize detectors with default detector if not already set
+	if e.detectors == nil {
+		e.detectors = []detector.Detector{detector.NewDefaultDetector()}
+	}
 }
 
 // LoadModel reloads the model from the model CONF file.
@@ -227,7 +209,6 @@ func (e *Enforcer) LoadModel() error {
 	if err != nil {
 		return err
 	}
-	e.model.SetLogger(e.logger)
 
 	e.model.PrintModel()
 	e.fm = model.LoadFunctionMap()
@@ -247,7 +228,6 @@ func (e *Enforcer) SetModel(m model.Model) {
 	e.model = m
 	e.fm = model.LoadFunctionMap()
 
-	e.model.SetLogger(e.logger)
 	e.initialize()
 }
 
@@ -275,12 +255,24 @@ func (e *Enforcer) SetWatcher(watcher persist.Watcher) error {
 
 // GetRoleManager gets the current role manager.
 func (e *Enforcer) GetRoleManager() rbac.RoleManager {
-	return e.rmMap["g"]
+	if e.rmMap != nil && e.rmMap["g"] != nil {
+		return e.rmMap["g"]
+	} else if e.condRmMap != nil && e.condRmMap["g"] != nil {
+		return e.condRmMap["g"]
+	} else {
+		return nil
+	}
 }
 
 // GetNamedRoleManager gets the role manager for the named policy.
 func (e *Enforcer) GetNamedRoleManager(ptype string) rbac.RoleManager {
-	return e.rmMap[ptype]
+	if e.rmMap != nil && e.rmMap[ptype] != nil {
+		return e.rmMap[ptype]
+	} else if e.condRmMap != nil && e.condRmMap[ptype] != nil {
+		return e.condRmMap[ptype]
+	} else {
+		return nil
+	}
 }
 
 // SetRoleManager sets the current role manager.
@@ -300,6 +292,62 @@ func (e *Enforcer) SetEffector(eft effector.Effector) {
 	e.eft = eft
 }
 
+// SetLogger sets the logger for the enforcer.
+func (e *Enforcer) SetLogger(logger log.Logger) {
+	e.logger = logger
+}
+
+// SetDetector sets a single detector for the enforcer.
+func (e *Enforcer) SetDetector(d detector.Detector) {
+	e.detectors = []detector.Detector{d}
+}
+
+// SetDetectors sets multiple detectors for the enforcer.
+func (e *Enforcer) SetDetectors(detectors []detector.Detector) {
+	e.detectors = detectors
+}
+
+// RunDetections runs all detectors on all role managers.
+// Returns the first error encountered, or nil if all checks pass.
+// Silently skips role managers that don't support the required iteration methods.
+func (e *Enforcer) RunDetections() error {
+	if e.detectors == nil || len(e.detectors) == 0 {
+		return nil
+	}
+
+	// Run detectors on all role managers
+	for _, rm := range e.rmMap {
+		for _, d := range e.detectors {
+			err := d.Check(rm)
+			// Skip if the role manager doesn't support the required iteration or is not initialized
+			if err != nil && (strings.Contains(err.Error(), "does not support Range iteration") ||
+				strings.Contains(err.Error(), "not properly initialized")) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Run detectors on all conditional role managers
+	for _, crm := range e.condRmMap {
+		for _, d := range e.detectors {
+			err := d.Check(crm)
+			// Skip if the role manager doesn't support the required iteration or is not initialized
+			if err != nil && (strings.Contains(err.Error(), "does not support Range iteration") ||
+				strings.Contains(err.Error(), "not properly initialized")) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // ClearPolicy clears all policy.
 func (e *Enforcer) ClearPolicy() {
 	e.invalidateMatcherMap()
@@ -313,13 +361,52 @@ func (e *Enforcer) ClearPolicy() {
 
 // LoadPolicy reloads the policy from file/database.
 func (e *Enforcer) LoadPolicy() error {
-	e.invalidateMatcherMap()
+	logEntry := e.onLogBeforeEventInLoadPolicy()
 
-	needToRebuild := false
-	newModel := e.model.Copy()
+	newModel, err := e.loadPolicyFromAdapter(e.model)
+	if err != nil {
+		e.onLogAfterEventWithError(logEntry, err)
+		return err
+	}
+	err = e.applyModifiedModel(newModel)
+	if err != nil {
+		e.onLogAfterEventWithError(logEntry, err)
+		return err
+	}
+
+	e.onLogAfterEventInLoadPolicy(logEntry, newModel)
+
+	// Run detectors after all policy rules are loaded
+	err = e.RunDetections()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *Enforcer) loadPolicyFromAdapter(baseModel model.Model) (model.Model, error) {
+	newModel := baseModel.Copy()
 	newModel.ClearPolicy()
 
+	if err := e.adapter.LoadPolicy(newModel); err != nil && err.Error() != "invalid file path, file path cannot be empty" {
+		return nil, err
+	}
+
+	if err := newModel.SortPoliciesBySubjectHierarchy(); err != nil {
+		return nil, err
+	}
+
+	if err := newModel.SortPoliciesByPriority(); err != nil {
+		return nil, err
+	}
+
+	return newModel, nil
+}
+
+func (e *Enforcer) applyModifiedModel(newModel model.Model) error {
 	var err error
+	needToRebuild := false
 	defer func() {
 		if err != nil {
 			if e.autoBuildRoleLinks && needToRebuild {
@@ -328,20 +415,9 @@ func (e *Enforcer) LoadPolicy() error {
 		}
 	}()
 
-	if err = e.adapter.LoadPolicy(newModel); err != nil && err.Error() != "invalid file path, file path cannot be empty" {
-		return err
-	}
-
-	if err = newModel.SortPoliciesBySubjectHierarchy(); err != nil {
-		return err
-	}
-
-	if err = newModel.SortPoliciesByPriority(); err != nil {
-		return err
-	}
-
 	if e.autoBuildRoleLinks {
 		needToRebuild = true
+
 		if err := e.rebuildRoleLinks(newModel); err != nil {
 			return err
 		}
@@ -350,7 +426,9 @@ func (e *Enforcer) LoadPolicy() error {
 			return err
 		}
 	}
+
 	e.model = newModel
+	e.invalidateMatcherMap()
 	return nil
 }
 
@@ -447,12 +525,20 @@ func (e *Enforcer) IsFiltered() bool {
 
 // SavePolicy saves the current policy (usually after changed with Casbin API) back to file/database.
 func (e *Enforcer) SavePolicy() error {
+	logEntry := e.onLogBeforeEventInSavePolicy()
+
 	if e.IsFiltered() {
-		return errors.New("cannot save a filtered policy")
-	}
-	if err := e.adapter.SavePolicy(e.model); err != nil {
+		err := errors.New("cannot save a filtered policy")
+		e.onLogAfterEventWithError(logEntry, err)
 		return err
 	}
+	if err := e.adapter.SavePolicy(e.model); err != nil {
+		e.onLogAfterEventWithError(logEntry, err)
+		return err
+	}
+
+	e.onLogAfterEventInSavePolicy(logEntry)
+
 	if e.watcher != nil {
 		var err error
 		if watcher, ok := e.watcher.(persist.WatcherEx); ok {
@@ -463,6 +549,35 @@ func (e *Enforcer) SavePolicy() error {
 		return err
 	}
 	return nil
+}
+
+// getDomainTokens extracts domain token names from request and policy definitions.
+// Returns empty strings if tokens cannot be found.
+func (e *Enforcer) getDomainTokens() (rDomainToken, pDomainToken string) {
+	if rAssertion, ok := e.model["r"]["r"]; ok && len(rAssertion.Tokens) > 1 {
+		rDomainToken = rAssertion.Tokens[1]
+	}
+	if pAssertion, ok := e.model["p"]["p"]; ok && len(pAssertion.Tokens) > 1 {
+		pDomainToken = pAssertion.Tokens[1]
+	}
+	return rDomainToken, pDomainToken
+}
+
+// registerDomainMatchingFunc registers domain matching function if the matcher uses keyMatch for domains.
+func (e *Enforcer) registerDomainMatchingFunc(ptype string) {
+	// Dynamically detect the domain token name from the model definition.
+	// In RBAC with domains, the domain is typically the second parameter (index 1)
+	// in both request and policy definitions (e.g., r = sub, dom, obj, act).
+	// We extract the actual token names to support arbitrary domain parameter names.
+	rDomainToken, pDomainToken := e.getDomainTokens()
+	if rDomainToken == "" || pDomainToken == "" {
+		return
+	}
+
+	matchFun := fmt.Sprintf("keyMatch(%s, %s)", rDomainToken, pDomainToken)
+	if strings.Contains(e.model["m"]["m"].Value, matchFun) {
+		e.AddNamedDomainMatchingFunc(ptype, "g", util.KeyMatch)
+	}
 }
 
 func (e *Enforcer) initRmMap() {
@@ -487,10 +602,7 @@ func (e *Enforcer) initRmMap() {
 				assertion.CondRM = defaultrolemanager.NewConditionalDomainManager(10)
 				e.condRmMap[ptype] = assertion.CondRM
 			}
-			matchFun := "keyMatch(r_dom, p_dom)"
-			if strings.Contains(e.model["m"]["m"].Value, matchFun) {
-				e.AddNamedDomainMatchingFunc(ptype, "g", util.KeyMatch)
-			}
+			e.registerDomainMatchingFunc(ptype)
 		}
 	}
 }
@@ -498,16 +610,6 @@ func (e *Enforcer) initRmMap() {
 // EnableEnforce changes the enforcing state of Casbin, when Casbin is disabled, all access will be allowed by the Enforce() function.
 func (e *Enforcer) EnableEnforce(enable bool) {
 	e.enabled = enable
-}
-
-// EnableLog changes whether Casbin will log messages to the Logger.
-func (e *Enforcer) EnableLog(enable bool) {
-	e.logger.EnableLog(enable)
-}
-
-// IsLogEnabled returns the current logger's enabled status.
-func (e *Enforcer) IsLogEnabled() bool {
-	return e.logger.IsEnabled()
 }
 
 // EnableAutoNotifyWatcher controls whether to save a policy rule automatically notify the Watcher when it is added or removed.
@@ -530,13 +632,17 @@ func (e *Enforcer) EnableAutoBuildRoleLinks(autoBuildRoleLinks bool) {
 	e.autoBuildRoleLinks = autoBuildRoleLinks
 }
 
-// EnableAcceptJsonRequest controls whether to accept json as a request parameter
+// EnableAcceptJsonRequest controls whether to accept json as a request parameter.
 func (e *Enforcer) EnableAcceptJsonRequest(acceptJsonRequest bool) {
 	e.acceptJsonRequest = acceptJsonRequest
 }
 
 // BuildRoleLinks manually rebuild the role inheritance relations.
 func (e *Enforcer) BuildRoleLinks() error {
+	e.invalidateMatcherMap()
+	if e.rmMap == nil {
+		return errors.New("rmMap is nil")
+	}
 	for _, rm := range e.rmMap {
 		err := rm.Clear()
 		if err != nil {
@@ -559,7 +665,7 @@ func (e *Enforcer) BuildIncrementalConditionalRoleLinks(op model.PolicyOp, ptype
 	return e.model.BuildIncrementalConditionalRoleLinks(e.condRmMap, op, "g", ptype, rules)
 }
 
-// NewEnforceContext Create a default structure based on the suffix
+// NewEnforceContext Create a default structure based on the suffix.
 func NewEnforceContext(suffix string) EnforceContext {
 	return EnforceContext{
 		RType: "r" + suffix,
@@ -574,11 +680,17 @@ func (e *Enforcer) invalidateMatcherMap() {
 }
 
 // enforce use a custom matcher to decides whether a "subject" can access a "object" with the operation "action", input parameters are usually: (matcher, sub, obj, act), use model matcher by default when matcher is "".
-func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interface{}) (ok bool, err error) {
+func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interface{}) (ok bool, err error) { //nolint:funlen,cyclop,gocyclo // TODO: reduce function complexity
+	logEntry := e.onLogBeforeEventInEnforce(rvals)
+
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic: %v\n%s", r, debug.Stack())
+			if e.logger != nil && logEntry != nil {
+				logEntry.Error = err
+			}
 		}
+		e.onLogAfterEventInEnforce(logEntry, ok)
 	}()
 
 	if !e.enabled {
@@ -624,7 +736,8 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 	if matcher == "" {
 		expString = e.model["m"][mType].Value
 	} else {
-		expString = util.RemoveComments(util.EscapeAssertion(matcher))
+		// For custom matchers provided at runtime, escape backslashes in string literals
+		expString = util.EscapeStringLiterals(util.RemoveComments(util.EscapeAssertion(matcher)))
 	}
 
 	rTokens := make(map[string]int, len(e.model["r"][rType].Tokens))
@@ -637,7 +750,22 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 	}
 
 	if e.acceptJsonRequest {
-		expString = requestJsonReplace(expString, rTokens, rvals)
+		// try to parse all request values from json to map[string]interface{}
+		for i, rval := range rvals {
+			switch rval := rval.(type) {
+			case string:
+				// Only attempt JSON parsing for strings that look like JSON objects or arrays
+				if len(rval) > 0 && (rval[0] == '{' || rval[0] == '[') {
+					var mapValue map[string]interface{}
+					mapValue, err = util.JsonToMap(rval)
+					if err != nil {
+						// Return a clear error when JSON-like string fails to parse
+						return false, fmt.Errorf("failed to parse JSON parameter at index %d: %w", i, err)
+					}
+					rvals[i] = mapValue
+				}
+			}
+		}
 	}
 
 	parameters := enforceParameters{
@@ -671,7 +799,7 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 	var effect effector.Effect
 	var explainIndex int
 
-	if policyLen := len(e.model["p"][pType].Policy); policyLen != 0 && strings.Contains(expString, pType+"_") {
+	if policyLen := len(e.model["p"][pType].Policy); policyLen != 0 && strings.Contains(expString, pType+"_") { //nolint:nestif // TODO: reduce function complexity
 		policyEffects = make([]effector.Effect, policyLen)
 		matcherResults = make([]float64, policyLen)
 
@@ -685,16 +813,7 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 					pvals)
 			}
 
-			if e.acceptJsonRequest {
-				pvalsCopy := make([]string, len(pvals))
-				copy(pvalsCopy, pvals)
-				for i, pStr := range pvalsCopy {
-					pvalsCopy[i] = requestJsonReplace(util.EscapeAssertion(pStr), rTokens, rvals)
-				}
-				parameters.pVals = pvalsCopy
-			} else {
-				parameters.pVals = pvals
-			}
+			parameters.pVals = pvals
 
 			result, err := expression.Eval(parameters)
 			// log.LogPrint("Result: ", result)
@@ -744,7 +863,6 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 			}
 		}
 	} else {
-
 		if hasEval && len(e.model["p"][pType].Policy) == 0 {
 			return false, errors.New("please make sure rule exists in policy when using eval() in matcher")
 		}
@@ -773,16 +891,9 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 		}
 	}
 
-	var logExplains [][]string
-
 	if explains != nil {
-		if len(*explains) > 0 {
-			logExplains = append(logExplains, *explains)
-		}
-
 		if explainIndex != -1 && len(e.model["p"][pType].Policy) > explainIndex {
 			*explains = e.model["p"][pType].Policy[explainIndex]
-			logExplains = append(logExplains, *explains)
 		}
 	}
 
@@ -791,34 +902,8 @@ func (e *Enforcer) enforce(matcher string, explains *[]string, rvals ...interfac
 	if effect == effector.Allow {
 		result = true
 	}
-	e.logger.LogEnforce(expString, rvals, result, logExplains)
 
 	return result, nil
-}
-
-var requestObjectRegex = regexp.MustCompile(`r[_.][A-Za-z_0-9]+\.[A-Za-z_0-9.]+[A-Za-z_0-9]`)
-var requestObjectRegexPrefix = regexp.MustCompile(`r[_.][A-Za-z_0-9]+\.`)
-
-// requestJsonReplace used to support request parameters of type json
-// It will replace the access of the request object in matchers or policy with the actual value in the request json parameter
-// For example: request sub = `{"Owner": "alice", "Age": 30}`
-// policy: p, r.sub.Age > 18, /data1, read  ==>  p, 30 > 18, /data1, read
-// matchers: m = r.sub == r.obj.Owner  ==>  m = r.sub == "alice"
-func requestJsonReplace(str string, rTokens map[string]int, rvals []interface{}) string {
-	matches := requestObjectRegex.FindAllString(str, -1)
-	for _, matchesStr := range matches {
-		prefix := requestObjectRegexPrefix.FindString(matchesStr)
-		jsonPath := strings.TrimPrefix(matchesStr, prefix)
-		tokenIndex := rTokens[prefix[:len(prefix)-1]]
-		if jsonStr, ok := rvals[tokenIndex].(string); ok {
-			newStr := gjson.Get(jsonStr, jsonPath).String()
-			if !util.IsNumeric(newStr) {
-				newStr = `"` + newStr + `"`
-			}
-			str = strings.Replace(str, matchesStr, newStr, -1)
-		}
-	}
-	return str
 }
 
 func (e *Enforcer) getAndStoreMatcherExpression(hasEval bool, expString string, functions map[string]govaluate.ExpressionFunction) (*govaluate.EvaluableExpression, error) {
@@ -848,21 +933,21 @@ func (e *Enforcer) EnforceWithMatcher(matcher string, rvals ...interface{}) (boo
 	return e.enforce(matcher, nil, rvals...)
 }
 
-// EnforceEx explain enforcement by informing matched rules
+// EnforceEx explain enforcement by informing matched rules.
 func (e *Enforcer) EnforceEx(rvals ...interface{}) (bool, []string, error) {
 	explain := []string{}
 	result, err := e.enforce("", &explain, rvals...)
 	return result, explain, err
 }
 
-// EnforceExWithMatcher use a custom matcher and explain enforcement by informing matched rules
+// EnforceExWithMatcher use a custom matcher and explain enforcement by informing matched rules.
 func (e *Enforcer) EnforceExWithMatcher(matcher string, rvals ...interface{}) (bool, []string, error) {
 	explain := []string{}
 	result, err := e.enforce(matcher, &explain, rvals...)
 	return result, explain, err
 }
 
-// BatchEnforce enforce in batches
+// BatchEnforce enforce in batches.
 func (e *Enforcer) BatchEnforce(requests [][]interface{}) ([]bool, error) {
 	var results []bool
 	for _, request := range requests {
@@ -875,7 +960,7 @@ func (e *Enforcer) BatchEnforce(requests [][]interface{}) ([]bool, error) {
 	return results, nil
 }
 
-// BatchEnforceWithMatcher enforce with matcher in batches
+// BatchEnforceWithMatcher enforce with matcher in batches.
 func (e *Enforcer) BatchEnforceWithMatcher(matcher string, requests [][]interface{}) ([]bool, error) {
 	var results []bool
 	for _, request := range requests {
@@ -888,7 +973,7 @@ func (e *Enforcer) BatchEnforceWithMatcher(matcher string, requests [][]interfac
 	return results, nil
 }
 
-// AddNamedMatchingFunc add MatchingFunc by ptype RoleManager
+// AddNamedMatchingFunc add MatchingFunc by ptype RoleManager.
 func (e *Enforcer) AddNamedMatchingFunc(ptype, name string, fn rbac.MatchingFunc) bool {
 	if rm, ok := e.rmMap[ptype]; ok {
 		rm.AddMatchingFunc(name, fn)
@@ -897,17 +982,21 @@ func (e *Enforcer) AddNamedMatchingFunc(ptype, name string, fn rbac.MatchingFunc
 	return false
 }
 
-// AddNamedDomainMatchingFunc add MatchingFunc by ptype to RoleManager
+// AddNamedDomainMatchingFunc add MatchingFunc by ptype to RoleManager.
 func (e *Enforcer) AddNamedDomainMatchingFunc(ptype, name string, fn rbac.MatchingFunc) bool {
 	if rm, ok := e.rmMap[ptype]; ok {
 		rm.AddDomainMatchingFunc(name, fn)
+		return true
+	}
+	if condRm, ok := e.condRmMap[ptype]; ok {
+		condRm.AddDomainMatchingFunc(name, fn)
 		return true
 	}
 	return false
 }
 
 // AddNamedLinkConditionFunc Add condition function fn for Link userName->roleName,
-// when fn returns true, Link is valid, otherwise invalid
+// when fn returns true, Link is valid, otherwise invalid.
 func (e *Enforcer) AddNamedLinkConditionFunc(ptype, user, role string, fn rbac.LinkConditionFunc) bool {
 	if rm, ok := e.condRmMap[ptype]; ok {
 		rm.AddLinkConditionFunc(user, role, fn)
@@ -917,7 +1006,7 @@ func (e *Enforcer) AddNamedLinkConditionFunc(ptype, user, role string, fn rbac.L
 }
 
 // AddNamedDomainLinkConditionFunc Add condition function fn for Link userName-> {roleName, domain},
-// when fn returns true, Link is valid, otherwise invalid
+// when fn returns true, Link is valid, otherwise invalid.
 func (e *Enforcer) AddNamedDomainLinkConditionFunc(ptype, user, role string, domain string, fn rbac.LinkConditionFunc) bool {
 	if rm, ok := e.condRmMap[ptype]; ok {
 		rm.AddDomainLinkConditionFunc(user, role, domain, fn)
@@ -926,7 +1015,7 @@ func (e *Enforcer) AddNamedDomainLinkConditionFunc(ptype, user, role string, dom
 	return false
 }
 
-// SetNamedLinkConditionFuncParams Sets the parameters of the condition function fn for Link userName->roleName
+// SetNamedLinkConditionFuncParams Sets the parameters of the condition function fn for Link userName->roleName.
 func (e *Enforcer) SetNamedLinkConditionFuncParams(ptype, user, role string, params ...string) bool {
 	if rm, ok := e.condRmMap[ptype]; ok {
 		rm.SetLinkConditionFuncParams(user, role, params...)
@@ -936,7 +1025,7 @@ func (e *Enforcer) SetNamedLinkConditionFuncParams(ptype, user, role string, par
 }
 
 // SetNamedDomainLinkConditionFuncParams Sets the parameters of the condition function fn
-// for Link userName->{roleName, domain}
+// for Link userName->{roleName, domain}.
 func (e *Enforcer) SetNamedDomainLinkConditionFuncParams(ptype, user, role, domain string, params ...string) bool {
 	if rm, ok := e.condRmMap[ptype]; ok {
 		rm.SetDomainLinkConditionFuncParams(user, role, domain, params...)
@@ -945,7 +1034,7 @@ func (e *Enforcer) SetNamedDomainLinkConditionFuncParams(ptype, user, role, doma
 	return false
 }
 
-// assumes bounds have already been checked
+// assumes bounds have already been checked.
 type enforceParameters struct {
 	rTokens map[string]int
 	rVals   []interface{}
@@ -954,7 +1043,7 @@ type enforceParameters struct {
 	pVals   []string
 }
 
-// implements govaluate.Parameters
+// implements govaluate.Parameters.
 func (p enforceParameters) Get(name string) (interface{}, error) {
 	if name == "" {
 		return nil, nil

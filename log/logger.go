@@ -1,4 +1,4 @@
-// Copyright 2018 The casbin Authors. All Rights Reserved.
+// Copyright 2025 The casbin Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,28 +14,13 @@
 
 package log
 
-//go:generate mockgen -destination=./mocks/mock_logger.go -package=mocks github.com/hanzoai/authz/log Logger
-
-// Logger is the logging interface implementation.
+// Logger defines the interface for event-driven logging in Casbin.
 type Logger interface {
-	// EnableLog controls whether print the message.
-	EnableLog(bool)
+	SetEventTypes([]EventType) error
+	// OnBeforeEvent is called before an event occurs and returns a handle for context.
+	OnBeforeEvent(entry *LogEntry) error
+	// OnAfterEvent is called after an event completes with the handle and final entry.
+	OnAfterEvent(entry *LogEntry) error
 
-	// IsEnabled returns if logger is enabled.
-	IsEnabled() bool
-
-	// LogModel log info related to model.
-	LogModel(model [][]string)
-
-	// LogEnforce log info related to enforce.
-	LogEnforce(matcher string, request []interface{}, result bool, explains [][]string)
-
-	// LogRole log info related to role.
-	LogRole(roles []string)
-
-	// LogPolicy log info related to policy.
-	LogPolicy(policy map[string][][]string)
-
-	// LogError log info relate to error
-	LogError(err error, msg ...string)
+	SetLogCallback(func(entry *LogEntry) error) error
 }

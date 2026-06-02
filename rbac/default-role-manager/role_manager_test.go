@@ -16,10 +16,12 @@ package defaultrolemanager
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 
-	"github.com/hanzoai/authz/rbac"
-	"github.com/hanzoai/authz/util"
+	"github.com/casbin/casbin/v3/rbac"
+	"github.com/casbin/casbin/v3/util"
 )
 
 func testRole(t *testing.T, rm rbac.RoleManager, name1 string, name2 string, res bool) {
@@ -385,4 +387,47 @@ func TestMaxHierarchyLevel(t *testing.T) {
 	testRole(t, rm, "level0", "level3", false)
 	testRole(t, rm, "level1", "level2", true)
 	testRole(t, rm, "level1", "level3", true)
+}
+
+// TestConcurrentHasLink tests concurrent HasLink calls for race conditions.
+// This test verifies that concurrent HasLink calls with matching functions
+// don't produce inconsistent results due to temporary role creation/deletion races.
+// Regression test for issue #1318.
+func TestConcurrentHasLink(t *testing.T) {
+	rm := NewRoleManager(10)
+	rm.AddMatchingFunc("keyMatch2", util.KeyMatch2)
+
+	_ = rm.AddLink("alice", "admin")
+	_ = rm.AddLink("admin", "/data/*")
+
+	expected, _ := rm.HasLink("alice", "/data/123")
+
+	const numGoroutines = 20
+	const numIterations = 100
+
+	var inconsistencies int64
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numIterations; j++ {
+				result, err := rm.HasLink("alice", "/data/123")
+				if err != nil {
+					t.Errorf("HasLink failed: %v", err)
+					return
+				} else if result != expected {
+					atomic.AddInt64(&inconsistencies, 1)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if inconsistencies > 0 {
+		t.Errorf("Found %d inconsistencies in %d total operations",
+			inconsistencies, numGoroutines*numIterations)
+	}
 }
