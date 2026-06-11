@@ -1,10 +1,10 @@
-package casbin
+package authz
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/util"
 )
 
 func BenchmarkRoleManagerSmall(b *testing.B) {

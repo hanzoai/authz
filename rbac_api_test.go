@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"fmt"
@@ -20,10 +20,10 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/errors"
-	defaultrolemanager "github.com/casbin/casbin/v3/rbac/default-role-manager"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/errors"
+	defaultrolemanager "github.com/hanzoai/authz/rbac/default-role-manager"
+	"github.com/hanzoai/authz/util"
 )
 
 func testGetRoles(t *testing.T, e *Enforcer, res []string, name string, domain ...string) {

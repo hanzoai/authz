@@ -18,7 +18,7 @@ import (
 	"encoding/csv"
 	"strings"
 
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/model"
 )
 
 // LoadPolicyLine loads a text line as a policy rule to model.

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	defaultrolemanager "github.com/casbin/casbin/v3/rbac/default-role-manager"
+	defaultrolemanager "github.com/hanzoai/authz/rbac/default-role-manager"
 )
 
 func TestDefaultDetector_NilRoleManager(t *testing.T) {
