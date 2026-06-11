@@ -15,7 +15,7 @@
 package persist
 
 import (
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/model"
 )
 
 // FilteredAdapter is the interface for Casbin adapters supporting filtered policies.

@@ -18,8 +18,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/casbin/casbin/v3/rbac"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/rbac"
+	"github.com/hanzoai/authz/util"
 )
 
 const defaultDomain string = ""

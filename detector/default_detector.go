@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/casbin/casbin/v3/rbac"
+	"github.com/hanzoai/authz/rbac"
 )
 
 // rangeableRM is an interface for role managers that support iterating over all role links.

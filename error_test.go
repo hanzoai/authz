@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"testing"
 
-	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
+	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
 )
 
 func TestPathError(t *testing.T) {

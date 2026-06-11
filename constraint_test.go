@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/casbin/casbin/v3/errors"
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/model"
 )
 
 func TestConstraintSOD(t *testing.T) {

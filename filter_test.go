@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"testing"
 
-	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
-	"github.com/casbin/casbin/v3/util"
+	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
+	"github.com/hanzoai/authz/util"
 )
 
 func TestInitFilteredAdapter(t *testing.T) {

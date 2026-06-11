@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"testing"
 
-	"github.com/casbin/casbin/v3/model"
-	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
-	"github.com/casbin/casbin/v3/rbac"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/model"
+	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
+	"github.com/hanzoai/authz/rbac"
+	"github.com/hanzoai/authz/util"
 )
 
 func testEnforce(t *testing.T, e *Enforcer, sub interface{}, obj interface{}, act string, res bool) {

@@ -1,10 +1,10 @@
-package casbin
+package authz
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/model"
 )
 
 func TestInvalidJsonRequest(t *testing.T) {

@@ -17,7 +17,7 @@ package model
 import (
 	"sync"
 
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/util"
 	"github.com/casbin/govaluate"
 )
 

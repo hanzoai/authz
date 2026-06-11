@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"context"
@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/casbin/casbin/v3/model"
-	"github.com/casbin/casbin/v3/persist"
+	"github.com/hanzoai/authz/model"
+	"github.com/hanzoai/authz/persist"
 )
 
 const (

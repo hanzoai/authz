@@ -23,9 +23,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/casbin/casbin/v3/config"
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/config"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/util"
 )
 
 // Model represents the whole access control model.

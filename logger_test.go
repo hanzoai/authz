@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/casbin/casbin/v3/log"
+	"github.com/hanzoai/authz/log"
 )
 
 func verifyBufferOutput(t *testing.T, logOutput string) {

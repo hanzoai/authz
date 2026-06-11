@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/casbin/casbin/v3/detector"
-	"github.com/casbin/casbin/v3/model"
-	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/detector"
+	"github.com/hanzoai/authz/model"
+	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
+	"github.com/hanzoai/authz/util"
 )
 
 func TestKeyMatchModelInMemory(t *testing.T) {

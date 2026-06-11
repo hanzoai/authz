@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"errors"
@@ -21,15 +21,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/casbin/casbin/v3/detector"
-	"github.com/casbin/casbin/v3/effector"
-	"github.com/casbin/casbin/v3/log"
-	"github.com/casbin/casbin/v3/model"
-	"github.com/casbin/casbin/v3/persist"
-	fileadapter "github.com/casbin/casbin/v3/persist/file-adapter"
-	"github.com/casbin/casbin/v3/rbac"
-	defaultrolemanager "github.com/casbin/casbin/v3/rbac/default-role-manager"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/detector"
+	"github.com/hanzoai/authz/effector"
+	"github.com/hanzoai/authz/log"
+	"github.com/hanzoai/authz/model"
+	"github.com/hanzoai/authz/persist"
+	fileadapter "github.com/hanzoai/authz/persist/file-adapter"
+	"github.com/hanzoai/authz/rbac"
+	defaultrolemanager "github.com/hanzoai/authz/rbac/default-role-manager"
+	"github.com/hanzoai/authz/util"
 
 	"github.com/casbin/govaluate"
 )

@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"fmt"
 
-	Err "github.com/casbin/casbin/v3/errors"
-	"github.com/casbin/casbin/v3/log"
-	"github.com/casbin/casbin/v3/model"
-	"github.com/casbin/casbin/v3/persist"
+	Err "github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/log"
+	"github.com/hanzoai/authz/model"
+	"github.com/hanzoai/authz/persist"
 )
 
 const (

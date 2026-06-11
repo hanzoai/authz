@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/casbin/casbin/v3/rbac"
+	"github.com/hanzoai/authz/rbac"
 
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/errors"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/util"
 )
 
 // GetRolesForUser gets the roles that a user has.

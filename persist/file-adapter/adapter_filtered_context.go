@@ -17,7 +17,7 @@ package fileadapter
 import (
 	"context"
 
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/model"
 )
 
 // LoadPolicyCtx loads all policy rules from the storage with context.
