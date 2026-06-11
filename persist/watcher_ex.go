@@ -14,7 +14,7 @@
 
 package persist
 
-import "github.com/casbin/casbin/v3/model"
+import "github.com/hanzoai/authz/model"
 
 // WatcherEx is the strengthened Casbin watchers.
 type WatcherEx interface {

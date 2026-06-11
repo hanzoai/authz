@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
-	"github.com/casbin/casbin/v3/log"
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz/log"
+	"github.com/hanzoai/authz/model"
 )
 
 // onLogBeforeEvent calls OnBeforeEvent on the logger if it exists.

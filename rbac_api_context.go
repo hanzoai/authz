@@ -13,14 +13,14 @@
 // limitations under the License.
 
 // rbac_api_context.go
-package casbin
+package authz
 
 import (
 	"context"
 
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/errors"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/util"
 )
 
 // AddRoleForUserCtx adds a role for a user with context support.

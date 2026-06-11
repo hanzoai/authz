@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/casbin/casbin/v3/constant"
+	"github.com/hanzoai/authz/constant"
 )
 
 // AddRoleForUserInDomainCtx adds a role for a user inside a domain with context support.

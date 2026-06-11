@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/util"
 	"github.com/casbin/govaluate"
 )
 

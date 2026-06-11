@@ -19,9 +19,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/casbin/casbin/v3/constant"
-	"github.com/casbin/casbin/v3/rbac"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/constant"
+	"github.com/hanzoai/authz/rbac"
+	"github.com/hanzoai/authz/util"
 )
 
 type (

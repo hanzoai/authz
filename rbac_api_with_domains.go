@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"fmt"
 
-	"github.com/casbin/casbin/v3/constant"
+	"github.com/hanzoai/authz/constant"
 )
 
 // GetUsersForRoleInDomain gets the users that has a role inside a domain. Add by Gordon.

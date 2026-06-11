@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/casbin/casbin/v3/persist/cache"
+	"github.com/hanzoai/authz/persist/cache"
 )
 
 // SyncedCachedEnforcer wraps Enforcer and provides decision sync cache.

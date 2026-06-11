@@ -17,8 +17,8 @@ package stringadapter
 import (
 	"testing"
 
-	"github.com/casbin/casbin/v3"
-	"github.com/casbin/casbin/v3/model"
+	"github.com/hanzoai/authz"
+	"github.com/hanzoai/authz/model"
 )
 
 func Test_KeyMatchRbac(t *testing.T) {
@@ -52,7 +52,7 @@ g, alice, data_group_admin
 		t.Errorf("load model from text failed: %v", err.Error())
 		return
 	}
-	e, _ := casbin.NewEnforcer(m, a)
+	e, _ := authz.NewEnforcer(m, a)
 	sub := "alice"
 	obj := "/alice_data/login"
 	act := "POST"
@@ -91,7 +91,7 @@ g, alice, data_group_admin
 		t.Errorf("load model from text failed: %v", err.Error())
 		return
 	}
-	e, _ := casbin.NewEnforcer(m, a)
+	e, _ := authz.NewEnforcer(m, a)
 	sub := "alice" // the user that wants to access a resource.
 	obj := "data1" // the resource that is going to be accessed.
 	act := "read"  // the operation that the user performs on the resource.

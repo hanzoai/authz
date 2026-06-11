@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"testing"
 
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/util"
 )
 
 func testStringList(t *testing.T, title string, f func() ([]string, error), res []string) {

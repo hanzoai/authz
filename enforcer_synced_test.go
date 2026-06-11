@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"sort"
 	"testing"
 	"time"
 
-	"github.com/casbin/casbin/v3/errors"
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/errors"
+	"github.com/hanzoai/authz/util"
 )
 
 func testEnforceSync(t *testing.T, e *SyncedEnforcer, sub string, obj interface{}, act string, res bool) {

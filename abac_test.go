@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"encoding/json"
 	"fmt"
 	"testing"
 
-	"github.com/casbin/casbin/v3/util"
+	"github.com/hanzoai/authz/util"
 )
 
 type testResource struct {

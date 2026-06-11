@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"sync"
@@ -21,8 +21,8 @@ import (
 
 	"github.com/casbin/govaluate"
 
-	"github.com/casbin/casbin/v3/persist"
-	"github.com/casbin/casbin/v3/rbac"
+	"github.com/hanzoai/authz/persist"
+	"github.com/hanzoai/authz/rbac"
 )
 
 // SyncedEnforcer wraps Enforcer and provides synchronized access.

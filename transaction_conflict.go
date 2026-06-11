@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casbin
+package authz
 
 import (
 	"fmt"
 
-	"github.com/casbin/casbin/v3/model"
-	"github.com/casbin/casbin/v3/persist"
+	"github.com/hanzoai/authz/model"
+	"github.com/hanzoai/authz/persist"
 )
 
 // ConflictError represents a transaction conflict error.

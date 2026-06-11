@@ -14,7 +14,7 @@
 
 package detector
 
-import "github.com/casbin/casbin/v3/rbac"
+import "github.com/hanzoai/authz/rbac"
 
 // Detector defines the interface of a policy consistency checker, currently used to detect RBAC inheritance cycles.
 type Detector interface {
