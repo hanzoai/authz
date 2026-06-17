@@ -28,7 +28,7 @@ permissions:
 jobs:
   build-source-release-draft:
     if: ${{ github.repository == 'apache/casbin' && !contains(github.ref_name, '-') }}
-    runs-on: ubuntu-latest
+    runs-on: hanzo-build-linux-amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
