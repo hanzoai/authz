@@ -1,19 +1,9 @@
-Casbin
+Hanzo Authz
 ====
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/casbin/casbin)](https://goreportcard.com/report/github.com/casbin/casbin)
-[![Build](https://github.com/casbin/casbin/actions/workflows/default.yml/badge.svg)](https://github.com/casbin/casbin/actions/workflows/default.yml)
-[![Coverage Status](https://coveralls.io/repos/github/casbin/casbin/badge.svg?branch=master)](https://coveralls.io/github/casbin/casbin?branch=master)
-[![Godoc](https://godoc.org/github.com/casbin/casbin?status.svg)](https://pkg.go.dev/github.com/casbin/casbin/v2)
-[![Release](https://img.shields.io/github/release/casbin/casbin.svg)](https://github.com/casbin/casbin/releases/latest)
-[![Discord](https://img.shields.io/discord/1022748306096537660?logo=discord&label=discord&color=5865F2)](https://discord.gg/S5UjpzGZjN)
-[![Sourcegraph](https://sourcegraph.com/github.com/casbin/casbin/-/badge.svg)](https://sourcegraph.com/github.com/casbin/casbin?badge)
+Hanzo Authz is a powerful and efficient open-source access control library for Go projects. It provides support for enforcing authorization based on various [access control models](https://en.wikipedia.org/wiki/Computer_security_model).
 
-**News**: still worry about how to write the correct Casbin policy? ``Casbin online editor`` is coming to help! Try it at: https://casbin.org/editor/
-
-![casbin Logo](casbin-logo.png)
-
-Casbin is a powerful and efficient open-source access control library for Golang projects. It provides support for enforcing authorization based on various [access control models](https://en.wikipedia.org/wiki/Computer_security_model).
+> Hanzo Authz builds on [Casbin](https://github.com/casbin/casbin) by the Casbin organization (Apache-2.0) and retains its original license.
 
 ## All the languages supported by Casbin:
 
