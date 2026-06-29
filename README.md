@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/hero.svg" alt="authz" width="880"></p>
+
 Hanzo Authz
 ====
 
