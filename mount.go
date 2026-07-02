@@ -34,7 +34,7 @@ import (
 
 	"github.com/hanzoai/authz/model"
 	"github.com/hanzoai/cloud"
-	"github.com/hanzoai/zip"
+	"github.com/zap-proto/zip"
 )
 
 // rbacModel is the canonical role-based-access-control model used by
