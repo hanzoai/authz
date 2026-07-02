@@ -34,7 +34,7 @@ import (
 
 	"github.com/hanzoai/authz/model"
 	"github.com/hanzoai/cloud"
-	"github.com/hanzoai/zip"
+	"github.com/zap-proto/zip"
 )
 
 // rbacModel is the canonical role-based-access-control model used by
@@ -133,8 +133,12 @@ func Mount(app *zip.App, deps cloud.Deps) error {
 		if err != nil {
 			return zip.ErrInternal(fmt.Sprintf("enforcer init: %v", err))
 		}
+		policies, err := e.GetPolicy()
+		if err != nil {
+			return zip.ErrInternal(fmt.Sprintf("get policies: %v", err))
+		}
 		return c.JSON(http.StatusOK, map[string]any{
-			"policies": e.GetPolicy(),
+			"policies": policies,
 		})
 	})
 
