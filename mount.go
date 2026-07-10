@@ -10,14 +10,12 @@
 //
 // Wire shape:
 //
-//	import _ "github.com/hanzoai/authz"  // init() registers
+//	authz.Mount(app, deps)  // cloud's composition root calls this directly
 //
-// The init() function below calls cloud.Register("authz", 70, …). At
-// startup the cloud binary iterates the registry and calls Mount() for
-// each enabled subsystem. authz must mount after iam (order 50) because
-// every handler trusts the gateway-minted X-Org-Id header that iam's
-// JWT validation produces; the binary refuses to boot if iam is
-// disabled while authz is enabled (validated in cloud.MountAll).
+// cloud's composition root wires each subsystem by calling Mount explicitly.
+// authz must mount after iam (order 50) because every handler trusts the
+// gateway-minted X-Org-Id header that iam's JWT validation produces; that
+// ordering now lives in cloud's wire entry (order 70), not here.
 //
 // Storage is in-process and per-org. Policies live in a SyncedEnforcer
 // keyed by org. The reference impl uses the string-adapter (RAM) so the
@@ -237,18 +235,4 @@ func enforcerFor(org string) (*SyncedEnforcer, error) {
 	}
 	actual, _ := orgEnforcers.LoadOrStore(org, e)
 	return actual.(*SyncedEnforcer), nil
-}
-
-// init registers authz with the cloud subsystem registry. Order 70
-// matches HIP-0106 — authz must mount after iam (50) because handlers
-// trust the gateway-minted X-Org-Id header that iam's JWT validation
-// produces.
-func init() {
-	cloud.Register("authz", 70, func(app any, deps cloud.Deps) error {
-		a, ok := app.(*zip.App)
-		if !ok {
-			return fmt.Errorf("authz.Mount: app is %T, want *zip.App", app)
-		}
-		return Mount(a, deps)
-	})
 }
