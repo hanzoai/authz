@@ -4,3 +4,33 @@ Copyright (c) 2026 Hanzo AI, Inc.
 This product includes software from Casbin (https://github.com/casbin/casbin), licensed under Apache-2.0:
 
     Copyright (c) The Casbin Organization
+
+Forked from https://github.com/casbin/casbin (Apache-2.0), by The Casbin Organization.
+Upstream Go module: github.com/casbin/casbin.
+
+DEVIATIONS from upstream Casbin
+-------------------------------
+- Go module path renamed to github.com/hanzoai/authz; the product is named "Hanzo Authz".
+- Source file headers add "Copyright 2026 Hanzo AI, Inc." and retain the upstream
+  "Portions Copyright ... The casbin Authors" attribution.
+- Adds mount.go and mount_default_adapter.go: a Mount() entry point that registers the
+  engine with github.com/hanzoai/cloud (cloud.Register("authz", ...)) and serves
+  /v1/authz/* (Check, AddPolicy, ListPolicies, RemovePolicy) in the unified cloud binary.
+- Adds ai_api.go: Enforcer.SetAIConfig and Enforcer.Explain, producing natural-language
+  explanations of enforcement decisions via an OpenAI-compatible API.
+- Adds a TransactionalEnforcer (enforcer_transactional.go, transaction.go,
+  transaction_buffer.go, transaction_commit.go, transaction_conflict.go): atomic policy
+  operations with optimistic locking and conflict detection.
+- Adds a ContextEnforcer (enforcer_context.go, enforcer_context_interface.go) that wraps
+  Enforcer over persist.ContextAdapter for context.Context-aware operations.
+- Adds the detector package (detector/): a Detector interface and default implementation
+  that checks a RoleManager for RBAC inheritance cycles.
+- Depends on the Hanzo/Lux platform stack in go.mod: github.com/hanzoai/cloud,
+  github.com/zap-proto/zip, github.com/luxfi/kms, github.com/luxfi/zapdb, github.com/luxfi/zap.
+- CI runs on Hanzo self-hosted runners (runs-on: hanzo-build-linux-amd64 across .github/workflows/).
+
+NOTICE propagation (Apache-2.0 section 4(d))
+--------------------------------------------
+No separate upstream NOTICE file is present in the source tree; the ASF incubation
+DISCLAIMER is retained, and the required upstream attribution (Copyright (c) The Casbin
+Organization, above) is preserved. Nothing further to propagate.
