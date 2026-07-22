@@ -128,7 +128,7 @@ What Casbin does NOT do:
 ## Installation
 
 ```
-go get github.com/casbin/casbin/v3
+go get github.com/hanzoai/authz
 ```
 
 ## Documentation
