@@ -10,7 +10,7 @@
 //
 // Wire shape:
 //
-//	authz.Mount(app, deps)  // cloud's composition root calls this directly
+//	authz.Mount(app, deps.Logger)  // cloud's composition root calls this directly
 //
 // cloud's composition root wires each subsystem by calling Mount explicitly.
 // authz must mount after iam (order 50) because every handler trusts the
@@ -31,7 +31,7 @@ import (
 	"sync"
 
 	"github.com/hanzoai/authz/model"
-	"github.com/hanzoai/cloud"
+	luxlog "github.com/luxfi/log"
 	"github.com/zap-proto/zip"
 )
 
@@ -66,8 +66,12 @@ var (
 // policy CRUD. The full enforcement library remains importable directly
 // (package authz) for in-process consumers that need richer semantics
 // than the HTTP surface exposes.
-func Mount(app *zip.App, deps cloud.Deps) error {
-	logger := deps.Logger.New("subsystem", "authz")
+// Mount takes only the canonical logger — authz has no other dependency on the
+// host, so it stays a standalone module (no import of github.com/hanzoai/cloud,
+// which would be a require cycle since cloud imports authz). cloud's composition
+// root adapts its Deps to this signature by passing deps.Logger.
+func Mount(app *zip.App, logger luxlog.Logger) error {
+	logger = logger.New("subsystem", "authz")
 
 	// Native /v1/authz/health — always served, no auth required.
 	app.Get("/v1/authz/health", func(c *zip.Ctx) error {
