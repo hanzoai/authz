@@ -417,7 +417,7 @@ func (model Model) GetFieldIndex(ptype string, field string) (int, error) {
 	}
 	assertion.FieldIndexMutex.RUnlock()
 
-	pattern := fmt.Sprintf("%s_"+field, ptype)
+	pattern := ptype + "_" + field
 	index := -1
 	for i, token := range assertion.Tokens {
 		if token == pattern {
@@ -426,7 +426,7 @@ func (model Model) GetFieldIndex(ptype string, field string) (int, error) {
 		}
 	}
 	if index == -1 {
-		return index, fmt.Errorf(field + " index is not set, please use enforcer.SetFieldIndex() to set index")
+		return index, fmt.Errorf("%s index is not set, please use enforcer.SetFieldIndex() to set index", field)
 	}
 
 	assertion.FieldIndexMutex.Lock()
