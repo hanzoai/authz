@@ -5,7 +5,7 @@ require (
 	github.com/casbin/govaluate v1.3.0
 	github.com/google/uuid v1.6.0
 	github.com/luxfi/log v1.5.0
-	github.com/zap-proto/zip v1.10.0
+	github.com/zap-proto/zip v1.17.2
 )
 
 require (
@@ -28,7 +28,7 @@ require (
 	github.com/valyala/fasthttp v1.70.0 // indirect
 	github.com/zap-proto/fiber/v3 v3.2.1 // indirect
 	github.com/zap-proto/go v1.3.0 // indirect
-	github.com/zap-proto/http v0.3.0 // indirect
+	github.com/zap-proto/http v0.3.1 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
