@@ -5,7 +5,7 @@ require (
 	github.com/casbin/govaluate v1.3.0
 	github.com/google/uuid v1.6.0
 	github.com/luxfi/log v1.5.0
-	github.com/zap-proto/zip v1.17.2
+	github.com/zap-proto/zip v1.18.1
 )
 
 require (
