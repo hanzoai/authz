@@ -28,7 +28,7 @@ func TestBothTransportsMintTheSameIdentity(t *testing.T) {
 
 	for _, selected := range []string{"", "beta", "victim"} {
 		zipped := req(t)
-		edge.Inject(edge.Of(zipped), cl, selected, nil)
+		edge.Inject(edge.Of(&zipped.Fiber().Request().Header), cl, selected, nil)
 
 		plain := http.Header{}
 		edge.Inject(plain, cl, selected, nil)
@@ -47,13 +47,13 @@ func TestBothTransportsStripTheSame(t *testing.T) {
 	zipped := req(t)
 	plain := http.Header{}
 	for _, name := range append(append([]string{}, authz.Headers...), authz.Retired...) {
-		edge.Of(zipped).Set(name, "forged")
+		edge.Of(&zipped.Fiber().Request().Header).Set(name, "forged")
 		plain.Set(name, "forged")
 	}
-	edge.Of(zipped).Set(authz.HeaderOrg, "claimed")
+	edge.Of(&zipped.Fiber().Request().Header).Set(authz.HeaderOrg, "claimed")
 	plain.Set(authz.HeaderOrg, "claimed")
 
-	if z, p := edge.Strip(edge.Of(zipped)), edge.Strip(plain); z != p || z != "claimed" {
+	if z, p := edge.Strip(edge.Of(&zipped.Fiber().Request().Header)), edge.Strip(plain); z != p || z != "claimed" {
 		t.Fatalf("Strip returned %q on zip and %q on net/http, want claimed", z, p)
 	}
 	for _, name := range append(append([]string{}, authz.Headers...), authz.Retired...) {
@@ -126,3 +126,35 @@ func base64Basic(user, pass string) string {
 }
 
 func b64std(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
+
+// Both header shapes qualify by SHAPE, and neither transport is named in the
+// package. net/http's type satisfies edge.Headers directly (asserted above);
+// fasthttp's byte-returning shape satisfies edge.Peeker, which is what a zip request
+// is handed through. If either assertion needs an import from a web framework to
+// compile, the edge has re-acquired a transport dependency and every consumer pays
+// for it — the edge went from 318 linked packages to 190 by dropping exactly that.
+type bytesHeader struct{ m map[string]string }
+
+func (b bytesHeader) Peek(name string) []byte { return []byte(b.m[name]) }
+func (b bytesHeader) Set(name, value string)  { b.m[name] = value }
+func (b bytesHeader) Del(name string)         { delete(b.m, name) }
+
+var _ edge.Peeker = bytesHeader{}
+
+// And a byte-returning header set behaves identically to net/http's through the
+// same rules — the adapter is not a second implementation.
+func TestPeekerShapeMatchesNetHTTP(t *testing.T) {
+	cl := &authz.Claims{Owner: "acme", PreferredUsername: "alice", Email: "a@acme.test",
+		Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}
+
+	bytes := edge.Of(bytesHeader{m: map[string]string{}})
+	plain := http.Header{}
+	edge.Inject(bytes, cl, "", nil)
+	edge.Inject(plain, cl, "", nil)
+
+	for _, name := range authz.Headers {
+		if b, p := bytes.Get(name), plain.Get(name); b != p {
+			t.Errorf("%s is %q through Peeker and %q through net/http", name, b, p)
+		}
+	}
+}
