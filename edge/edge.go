@@ -67,15 +67,41 @@ func Strip(c *zip.Ctx) (claimedOrg string) {
 // escalation this package makes unrepeatable: every org owner arrived as a
 // platform admin, and the money gates read that header.
 func Inject(c *zip.Ctx, cl *authz.Claims, selected string, at *authz.Grant) {
-	if c == nil || cl == nil {
+	if c == nil {
 		return
 	}
 	h := &c.Fiber().Request().Header
+	for _, m := range Mint(cl, selected, at) {
+		h.Set(m.Name, m.Value)
+	}
+}
+
+// Header is one minted name and its value.
+type Header struct{ Name, Value string }
+
+// Mint is the identity decision AS A VALUE: the headers a verified token entitles
+// this request to carry, with the zero values already dropped.
+//
+// It is pure and names no transport, which is what lets one decision serve two of
+// them. The fleet serves on zip and applies it through Inject; the KrakenD HTTP
+// edge applies the same slice to an *http.Request. A second transport is a loop
+// over this, never a second copy of the reasoning — the copy is how the platform
+// header came to be minted from an org role in one place after being fixed in the
+// other.
+//
+// Absent is distinct from empty throughout: a header whose value is the zero value
+// is not in the slice, so applying it never writes a header the token did not earn
+// and never blanks one.
+func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
+	if cl == nil {
+		return nil
+	}
 	effective, _ := cl.EffectiveOrg(selected)
 
+	out := make([]Header, 0, 10)
 	set := func(name, v string) {
 		if v != "" {
-			h.Set(name, v)
+			out = append(out, Header{name, v})
 		}
 	}
 	set(authz.HeaderOrg, effective)
@@ -105,11 +131,12 @@ func Inject(c *zip.Ctx, cl *authz.Claims, selected string, at *authz.Grant) {
 	}
 
 	if cl.PlatformSudo() {
-		h.Set(authz.HeaderUserAdmin, "true")
+		set(authz.HeaderUserAdmin, "true")
 	}
 	if cl.OrgAdmin(effective) {
-		h.Set(authz.HeaderUserOrgAdmin, "true")
+		set(authz.HeaderUserOrgAdmin, "true")
 	}
+	return out
 }
 
 // Token extracts the credential a request carries, from — in order — an
