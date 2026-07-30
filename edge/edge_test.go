@@ -213,9 +213,8 @@ func TestEffectiveOrgFailsClosedToHome(t *testing.T) {
 	}
 }
 
-// The sub-scope headers are minted from the signed claims, and only as far as the
-// location is whole. A project with no workspace above it mints no project header:
-// the two would print as one path and collide with a workspace of that name.
+// The sub-scope headers are minted per claim, each refused if it is not an
+// injective identifier.
 func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 	for _, c := range []struct {
 		name          string
@@ -227,7 +226,11 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 		{"neither", "", "", "", ""},
 		{"workspace only", "prod", "", "prod", ""},
 		{"both", "prod", "web", "prod", "web"},
-		{"project with no workspace mints neither", "", "web", "", ""},
+		// A project may sit directly under an org — IAM emits `project` today and no
+		// `workspace` at all — so requiring a workspace above it would drop a scope
+		// that works. Each header is its own scalar; the PATH is HeaderScope.
+		{"project with no workspace still mints the project", "", "web", "", "web"},
+		{"a non-injective segment mints nothing for that segment", "prod ", "web", "", "web"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			cl := &authz.Claims{
