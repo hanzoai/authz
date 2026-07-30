@@ -19,12 +19,12 @@ func req(t *testing.T) *zip.Ctx {
 // hdr reads a REQUEST header the edge minted. The edge rewrites the request the
 // next tier reads, not the response.
 func hdr(c *zip.Ctx, name string) string {
-	return string(c.Fiber().Request().Header.Peek(name))
+	return edge.Of(c).Get(name)
 }
 
 // claim sets a header a CLIENT supplied, which is what Strip must delete.
 func claim(c *zip.Ctx, name, v string) {
-	c.Fiber().Request().Header.Set(name, v)
+	edge.Of(c).Set(name, v)
 }
 
 // THE ESCALATION. Claims.IsAdmin is IAM's ORG-role bit; the platform-authority
@@ -39,7 +39,7 @@ func TestOrgOwnerIsNotAPlatformAdmin(t *testing.T) {
 		Orgs:              []authz.Membership{{Org: "acme", Role: authz.Owner}},
 	}
 	r := req(t)
-	edge.Inject(r, owner, "", nil)
+	edge.Inject(edge.Of(r), owner, "", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
 		t.Errorf("an org owner was minted PLATFORM authority %s=%q", authz.HeaderUserAdmin, got)
@@ -71,7 +71,7 @@ func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
 		TokenType:         "access-token",
 	}
 	r := req(t)
-	edge.Inject(r, machine, "victim", nil)
+	edge.Inject(edge.Of(r), machine, "victim", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
 		t.Errorf("an admin-org machine was minted %s=%q", authz.HeaderUserAdmin, got)
@@ -96,7 +96,7 @@ func TestPlatformOperatorActsInAnotherTenantWithoutOrgAdmin(t *testing.T) {
 		Orgs:              []authz.Membership{{Org: authz.AdminOrg, Role: authz.Admin}},
 	}
 	r := req(t)
-	edge.Inject(r, op, "victim", nil)
+	edge.Inject(edge.Of(r), op, "victim", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "true" {
 		t.Errorf("the platform operator lost %s", authz.HeaderUserAdmin)
@@ -119,7 +119,7 @@ func TestStripRemovesEveryMintedAndRetiredHeader(t *testing.T) {
 	claim(r, authz.HeaderOrg, "claimed")
 	claim(r, "X-Unrelated", "kept")
 
-	if got := edge.Strip(r); got != "claimed" {
+	if got := edge.Strip(edge.Of(r)); got != "claimed" {
 		t.Errorf("Strip returned %q, want the claimed org", got)
 	}
 	for _, h := range authz.Headers {
@@ -146,10 +146,10 @@ func TestForgedAuthorityAndScopeHeadersNeverSurvive(t *testing.T) {
 	claim(r, authz.HeaderProject, "victim-project")
 	claim(r, authz.HeaderScope, "victim/prod/web")
 	claim(r, authz.HeaderScopeRole, "owner")
-	edge.Strip(r)
+	edge.Strip(edge.Of(r))
 
 	// An ordinary member, re-minted from verified claims, gets none of them back.
-	edge.Inject(r, &authz.Claims{Owner: "acme", PreferredUsername: "u", Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}, "", nil)
+	edge.Inject(edge.Of(r), &authz.Claims{Owner: "acme", PreferredUsername: "u", Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}, "", nil)
 	for _, h := range []string{authz.HeaderUserAdmin, authz.HeaderWorkspace, authz.HeaderProject, authz.HeaderScope, authz.HeaderScopeRole} {
 		if got := hdr(r, h); got != "" {
 			t.Errorf("forged %s came back as %q", h, got)
@@ -162,7 +162,7 @@ func TestForgedAuthorityAndScopeHeadersNeverSurvive(t *testing.T) {
 func TestStripRefusesNonInjectiveClaimedOrg(t *testing.T) {
 	r := req(t)
 	claim(r, authz.HeaderOrg, "acme ")
-	if got := edge.Strip(r); got != "" {
+	if got := edge.Strip(edge.Of(r)); got != "" {
 		t.Errorf("Strip returned %q for a non-injective org, want empty", got)
 	}
 }
@@ -177,7 +177,7 @@ func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
 	theirs := &authz.Grant{Subject: "acme/other", Scope: authz.Path{"acme", "prod", "web"}, Role: authz.Owner}
 
 	r := req(t)
-	edge.Inject(r, c, "", mine)
+	edge.Inject(edge.Of(r), c, "", mine)
 	if got := hdr(r, authz.HeaderScope); got != "acme/prod/web" {
 		t.Errorf("%s = %q, want the resolved scope", authz.HeaderScope, got)
 	}
@@ -186,7 +186,7 @@ func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
 	}
 
 	r = req(t)
-	edge.Inject(r, c, "", theirs)
+	edge.Inject(edge.Of(r), c, "", theirs)
 	if got := hdr(r, authz.HeaderScope); got != "" {
 		t.Errorf("another subject's resolved scope was minted: %q", got)
 	}
@@ -236,7 +236,7 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 				Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}},
 			}
 			r := req(t)
-			edge.Inject(r, cl, "", nil)
+			edge.Inject(edge.Of(r), cl, "", nil)
 
 			if got := hdr(r, authz.HeaderWorkspace); got != c.wantWorkspace {
 				t.Errorf("%s = %q, want %q", authz.HeaderWorkspace, got, c.wantWorkspace)

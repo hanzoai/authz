@@ -1,19 +1,22 @@
-// Package edge is the identity boundary: it strips what a client claimed,
-// verifies the credential, and mints the headers everything behind it reads.
+// Package edge is the identity boundary: it strips what a client claimed, verifies
+// the credential, and mints the headers everything behind it reads.
 //
-// It is SEPARATE from the decision (package authz) on purpose. A decision is a
-// pure function of claims — Can(subject, verb, path) — and every plugin in the
-// fleet asks it. An edge touches a request, so it links a transport. Folding the
-// two together made the decision drag the whole HTTP stack into every caller
-// that only wanted to ask a question, which is the same error as a dependency
-// struct naming every client its callers might want.
+// It is SEPARATE from the decision (package authz) on purpose. A decision is a pure
+// function of claims — Can(subject, verb, path) — and every plugin in the fleet asks
+// it. An edge touches a request, so it links a transport. Folding the two together
+// made the decision drag the whole HTTP stack into every caller that only wanted to
+// ask a question, which is the same error as a dependency struct naming every client
+// its callers might want.
 //
 // So: `authz` is the question, imported everywhere. `authz/edge` is the answer's
-// custody, imported ONLY by whoever holds the edge role (HIP-0519). Today that
-// is the gateway, and the gateway already serves on zip.
+// custody, imported ONLY by whoever holds the edge role (HIP-0519).
 //
-// ZIP-NATIVE. The request is a *zip.Ctx, which is what the fleet serves on, so
-// there is no second HTTP type in the graph and nothing to convert at the seam.
+// ONE EDGE, NOT ONE PER TRANSPORT. The estate serves on zip and also fronts an
+// HTTP proxy edge, and when each held its own copy of this reasoning they drifted:
+// the platform-authority header was corrected in one and went on being minted from
+// an org role in the other. So the rules here take a [Headers] — the three
+// operations rewriting an identity needs — which net/http's own header type
+// satisfies as written and a zip request reaches through [Of].
 package edge
 
 import (
@@ -24,18 +27,56 @@ import (
 	"github.com/zap-proto/zip"
 )
 
-// Strip deletes every identity header a client supplied and returns the org it
-// had CLAIMED, which is an input to scope selection and never an authority.
+// Headers is the header set an edge rewrites. It is the smallest surface the rules
+// below use, so a transport qualifies by having it rather than by being named here:
+// net/http's http.Header satisfies it with no adapter at all.
+type Headers interface {
+	Get(name string) string
+	Set(name, value string)
+	Del(name string)
+}
+
+// Of adapts a zip request's headers to [Headers].
+//
+// The methods are reached through an anonymous interface rather than a named
+// fasthttp type, so this package states what it needs of a header set instead of
+// naming a transport it does not otherwise depend on.
+func Of(c *zip.Ctx) Headers {
+	if c == nil {
+		return nil
+	}
+	return peeker{&c.Fiber().Request().Header}
+}
+
+type peeker struct {
+	h interface {
+		Peek(string) []byte
+		Set(string, string)
+		Del(string)
+	}
+}
+
+func (p peeker) Get(name string) string { return string(p.h.Peek(name)) }
+func (p peeker) Set(name, value string) { p.h.Set(name, value) }
+func (p peeker) Del(name string)        { p.h.Del(name) }
+
+// Strip deletes every identity header a client supplied and returns the org it had
+// CLAIMED, which is an input to scope selection and never an authority.
 //
 // The claimed org is RETURNED rather than left on the request precisely so it
 // cannot be mistaken for a minted one: the only way to act on it is to hand it to
 // Inject, which admits it only if the signed membership set does.
-func Strip(c *zip.Ctx) (claimedOrg string) {
-	if c == nil {
+//
+// The capture and the strip are ONE operation because the selection must be read
+// BEFORE the header is deleted. A separate "read it first" function would be an
+// ordering trap that fails silently — the org switcher would simply stop working —
+// and a caller that ignores the return value keeps the safe behaviour: nothing
+// claimed, nothing minted.
+func Strip(h Headers) (claimedOrg string) {
+	if h == nil {
 		return ""
 	}
-	h := &c.Fiber().Request().Header
-	claimedOrg = string(h.Peek(authz.HeaderOrg))
+	claimedOrg = h.Get(authz.HeaderOrg)
 	if authz.HasUnsafeRune(claimedOrg) {
 		claimedOrg = "" // not an injective identifier: it grants nothing
 	}
@@ -48,29 +89,12 @@ func Strip(c *zip.Ctx) (claimedOrg string) {
 	return claimedOrg
 }
 
-// Inject mints the identity headers from VERIFIED claims. selected is the org the
-// client asked to act in, as returned by Strip; it is honoured only when the
-// signed membership set admits it, or when the caller may masquerade.
-//
-// at is the grant the edge RESOLVED for this request, or nil when none was
-// requested. It is minted only when it belongs to THIS subject: an edge
-// forwarding a grant resolved for anyone else is the whole class of bug this
-// package exists to prevent, one tier deeper.
-//
-// TWO ADMIN SCOPES, TWO HEADERS, never interchangeable. HeaderUserAdmin is
-// PLATFORM authority — a human whose home org is the reserved admin org.
-// HeaderUserOrgAdmin is admin of one's OWN org, resolved against the EFFECTIVE
-// org so an operator viewing another tenant carries sudo without that tenant's
-// self-service authority.
-//
-// Minting the platform header from Claims.IsAdmin — the ORG-role bit — is the
-// escalation this package makes unrepeatable: every org owner arrived as a
-// platform admin, and the money gates read that header.
-func Inject(c *zip.Ctx, cl *authz.Claims, selected string, at *authz.Grant) {
-	if c == nil {
+// Inject applies [Mint] — the identity a verified token entitles this request to
+// carry — to the headers the next tier reads.
+func Inject(h Headers, cl *authz.Claims, selected string, at *authz.Grant) {
+	if h == nil {
 		return
 	}
-	h := &c.Fiber().Request().Header
 	for _, m := range Mint(cl, selected, at) {
 		h.Set(m.Name, m.Value)
 	}
@@ -82,12 +106,21 @@ type Header struct{ Name, Value string }
 // Mint is the identity decision AS A VALUE: the headers a verified token entitles
 // this request to carry, with the zero values already dropped.
 //
-// It is pure and names no transport, which is what lets one decision serve two of
-// them. The fleet serves on zip and applies it through Inject; the KrakenD HTTP
-// edge applies the same slice to an *http.Request. A second transport is a loop
-// over this, never a second copy of the reasoning — the copy is how the platform
-// header came to be minted from an org role in one place after being fixed in the
-// other.
+// selected is the org the client asked to act in, as returned by [Strip]; it is
+// honoured only when the signed membership set admits it, or when the caller may
+// masquerade. at is the grant the edge RESOLVED for this request, or nil when none
+// was requested — and it is minted only when it belongs to THIS subject, because an
+// edge forwarding a grant resolved for anyone else is the whole class of bug this
+// package exists to prevent, one tier deeper.
+//
+// TWO ADMIN SCOPES, TWO HEADERS, never interchangeable. HeaderUserAdmin is PLATFORM
+// authority — a human whose home org is the reserved admin org. HeaderUserOrgAdmin
+// is admin of one's OWN org, resolved against the EFFECTIVE org so an operator
+// viewing another tenant carries sudo without that tenant's self-service authority.
+//
+// Minting the platform header from Claims.IsAdmin — the ORG-role bit — is the
+// escalation this package makes unrepeatable: every org owner arrived as a platform
+// admin, and the money gates read that header.
 //
 // Absent is distinct from empty throughout: a header whose value is the zero value
 // is not in the slice, so applying it never writes a header the token did not earn
@@ -140,26 +173,26 @@ func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 }
 
 // Token extracts the credential a request carries, from — in order — an
-// Authorization or X-Authorization Bearer, HTTP Basic (the password, which is how
-// a .netrc credential reaches a proxy), then a session cookie.
-func Token(c *zip.Ctx) string {
-	if t := Bearer(c); t != "" {
+// Authorization or X-Authorization Bearer, HTTP Basic (the password, which is how a
+// .netrc credential reaches a proxy), then a session cookie.
+func Token(h Headers) string {
+	if t := Bearer(h); t != "" {
 		return t
 	}
-	if t := Basic(c); t != "" {
+	if t := Basic(h); t != "" {
 		return t
 	}
-	return Cookie(c)
+	return Cookie(h)
 }
 
 // Bearer extracts a Bearer token from Authorization or X-Authorization.
-func Bearer(c *zip.Ctx) string {
-	if c == nil {
+func Bearer(h Headers) string {
+	if h == nil {
 		return ""
 	}
-	auth := c.Header("Authorization")
+	auth := h.Get("Authorization")
 	if auth == "" {
-		auth = c.Header("X-Authorization")
+		auth = h.Get("X-Authorization")
 	}
 	scheme, rest, ok := strings.Cut(auth, " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
@@ -174,13 +207,13 @@ func Bearer(c *zip.Ctx) string {
 //
 //	machine goproxy.hanzo.ai login <email> password <IAM token>
 //
-// — so the username is an address, not a secret, and the token may arrive in
-// either field.
-func Basic(c *zip.Ctx) string {
-	if c == nil {
+// — so the username is an address, not a secret, and the token may arrive in either
+// field.
+func Basic(h Headers) string {
+	if h == nil {
 		return ""
 	}
-	scheme, rest, ok := strings.Cut(c.Header("Authorization"), " ")
+	scheme, rest, ok := strings.Cut(h.Get("Authorization"), " ")
 	if !ok || !strings.EqualFold(scheme, "Basic") {
 		return ""
 	}
@@ -198,24 +231,45 @@ func Basic(c *zip.Ctx) string {
 	return user
 }
 
+// cookieNames are the session cookies a first-party sign-in mints, most trustworthy
+// first.
+//
+// __Host-hanzo_iam_token leads and is the name to mint: the __Host- prefix is
+// browser-enforced, so such a cookie may only be set Secure, Path=/, and WITHOUT a
+// Domain attribute — a sibling host cannot set a Domain-scoped cookie of the same
+// name to shadow it. The unprefixed names stay for clients that already mint them,
+// and are read only when no un-shadowable cookie is present.
+var cookieNames = []string{
+	"__Host-hanzo_iam_token", "hanzo_iam_token",
+	"iam_access_token", "access_token", "hanzo_token",
+}
+
 // Cookie extracts an access token from the session cookie names a first-party
 // sign-in mints.
 //
-// __Host-hanzo_iam_token is first and is the name to mint: the __Host- prefix is
-// browser-enforced, so such a cookie may only be set Secure, Path=/, and WITHOUT
-// a Domain attribute — a sibling host cannot set a Domain-scoped cookie of the
-// same name to shadow it. The unprefixed names stay for clients that already mint
-// them, and are read only when no un-shadowable cookie is present.
-func Cookie(c *zip.Ctx) string {
-	if c == nil {
+// The Cookie header is parsed here rather than delegated to a transport's own
+// accessor, so both edges read the same names in the same order. A duplicate name
+// takes the FIRST value: a later one is what an attacker who can set a cookie on a
+// sibling host appends, and last-wins would let it overwrite the real session.
+func Cookie(h Headers) string {
+	if h == nil {
 		return ""
 	}
-	for _, name := range []string{
-		"__Host-hanzo_iam_token", "hanzo_iam_token",
-		"iam_access_token", "access_token", "hanzo_token",
-	} {
-		if v := c.Fiber().Cookies(name); v != "" {
-			return v
+	jar := h.Get("Cookie")
+	if jar == "" {
+		return ""
+	}
+	for _, want := range cookieNames {
+		rest := jar
+		for rest != "" {
+			var pair string
+			pair, rest, _ = strings.Cut(rest, ";")
+			name, value, ok := strings.Cut(strings.TrimSpace(pair), "=")
+			if ok && name == want {
+				if v := strings.Trim(strings.TrimSpace(value), `"`); v != "" {
+					return v
+				}
+			}
 		}
 	}
 	return ""
