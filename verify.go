@@ -44,13 +44,21 @@ const leeway = 2 * time.Minute
 // Verify parses token, verifies its signature against the keys its `kid` names,
 // and validates issuer and expiry. It returns the claims IAM signed.
 //
+// issuers is an ALLOWLIST, because one deployment fronts several brands and each
+// signs under its own issuer (hanzo.id, lux.id, zoo.id, plus whatever a white-label
+// deployment adds). A single expected issuer cannot express that, and the service
+// that needed it wrote its own reader rather than go without.
+//
 // Verified: the algorithm (against algs, before any signature check), the `kid`
 // (required — a token with no key id is refused rather than tried against every
 // key in the set, which is how a reader ends up accepting a signature from a key
-// the token never named), the signature, the issuer, and expiry with leeway. An
-// empty expected issuer is an error, not a skipped comparison: jwt validates
-// Issuer only when an expectation is set, so passing "" would accept a token from
-// any issuer.
+// the token never named), the signature, the issuer, and expiry with leeway.
+//
+// FAIL-SECURE IN BOTH DIRECTIONS on the issuer. An EMPTY allowlist matches nothing
+// and refuses every token — a misconfiguration that empties it must reject rather
+// than silently disable the check, which is what happens when a comparison is made
+// conditional on having something to compare against. A non-empty allowlist refuses
+// any issuer outside it, and the comparison is VERBATIM.
 //
 // The AUDIENCE is deliberately NOT verified. IAM sets aud per RFC 8707 to the
 // requesting CLIENT (audienceFor: the client id, or "<clientId>-org-<org>" for a
@@ -62,15 +70,15 @@ const leeway = 2 * time.Minute
 // RegisteredClaims.Audience, so a service that IS a named audience (a per-org KMS
 // identity checking "<owner>-platform-kms", which Machine already does) checks the
 // one value it owns rather than maintaining a registry of everyone else's.
-func Verify(token string, keys Keys, issuer string) (*Claims, error) {
+func Verify(token string, keys Keys, issuers []string) (*Claims, error) {
 	if token == "" {
 		return nil, errors.New("authz: no token")
 	}
 	if keys == nil {
 		return nil, errors.New("authz: no key material")
 	}
-	if issuer == "" {
-		return nil, errors.New("authz: no expected issuer")
+	if len(issuers) == 0 {
+		return nil, errors.New("authz: no trusted issuer")
 	}
 	var c Claims
 	_, err := jwt.ParseWithClaims(token, &c, func(t *jwt.Token) (any, error) {
@@ -89,14 +97,21 @@ func Verify(token string, keys Keys, issuer string) (*Claims, error) {
 		return set, nil
 	},
 		jwt.WithValidMethods(algs),
-		jwt.WithIssuer(issuer),
 		jwt.WithExpirationRequired(),
 		jwt.WithLeeway(leeway),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("authz: %w", err)
 	}
-	return &c, nil
+	// The issuer is checked HERE rather than through jwt.WithIssuer because that
+	// option takes ONE value. Checking it after the signature holds is the same order
+	// the library uses; an unverified `iss` is not evidence of anything either way.
+	for _, want := range issuers {
+		if c.Issuer == want {
+			return &c, nil
+		}
+	}
+	return nil, fmt.Errorf("authz: issuer %q is not trusted", c.Issuer)
 }
 
 // IsAPIKey reports whether a credential is an opaque key rather than a JWT. It

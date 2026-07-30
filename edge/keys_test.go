@@ -59,7 +59,7 @@ func TestVerifyThroughPublishedRSAKey(t *testing.T) {
 	}
 
 	keys := edge.NewKeys(url, time.Minute)
-	got, err := authz.Verify(signed, keys.Resolve, "https://hanzo.id")
+	got, err := authz.Verify(signed, keys.Resolve, []string{"https://hanzo.id"})
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestVerifyThroughPublishedRSAKey(t *testing.T) {
 
 	// The second verification is served from cache — the fetch is per TTL, not per
 	// request, or the edge adds a network round-trip to every call it fronts.
-	if _, err := authz.Verify(signed, keys.Resolve, "https://hanzo.id"); err != nil {
+	if _, err := authz.Verify(signed, keys.Resolve, []string{"https://hanzo.id"}); err != nil {
 		t.Fatalf("second Verify: %v", err)
 	}
 	if *hits != 1 {
@@ -96,7 +96,7 @@ func TestForeignKeyDoesNotVerify(t *testing.T) {
 	signed, _ := tok.SignedString(attacker)
 
 	keys := edge.NewKeys(url, time.Minute)
-	if _, err := authz.Verify(signed, keys.Resolve, "https://hanzo.id"); err == nil {
+	if _, err := authz.Verify(signed, keys.Resolve, []string{"https://hanzo.id"}); err == nil {
 		t.Fatal("a token signed by an unpublished key verified")
 	}
 }
@@ -190,7 +190,7 @@ func TestNoKeysMeansNoVerification(t *testing.T) {
 	if got := keys.Resolve("cert-hanzo"); got != nil {
 		t.Error("an unreachable publisher resolved a key")
 	}
-	if _, err := authz.Verify("not.a.token", keys.Resolve, "https://hanzo.id"); err == nil {
+	if _, err := authz.Verify("not.a.token", keys.Resolve, []string{"https://hanzo.id"}); err == nil {
 		t.Error("verification succeeded with no key material")
 	}
 }
@@ -228,7 +228,7 @@ func TestVerifierRefusesWhatTheCopiesAccepted(t *testing.T) {
 		return s
 	}
 
-	v := edge.NewVerifier(url, "https://hanzo.id", []string{"hanzo-console"}, time.Minute)
+	v := edge.NewVerifier(url, []string{"https://hanzo.id"}, []string{"hanzo-console"}, time.Minute)
 
 	if _, err := v.VerifyRaw(mint(priv, "cert-hanzo", "https://hanzo.id", "hanzo-console")); err != nil {
 		t.Fatalf("a good token was refused: %v", err)
@@ -257,9 +257,9 @@ func TestVerifierRefusesWhatTheCopiesAccepted(t *testing.T) {
 		t.Errorf("an absent credential gave %v, want ErrNoToken", err)
 	}
 
-	// An EMPTY configured issuer must refuse everything. The copies made this a
+	// An EMPTY issuer allowlist must refuse everything. The copies made this a
 	// skipped comparison, which accepts a token from any issuer.
-	blind := edge.NewVerifier(url, "", nil, time.Minute)
+	blind := edge.NewVerifier(url, nil, nil, time.Minute)
 	if _, err := blind.VerifyRaw(mint(priv, "cert-hanzo", "https://evil.test", "")); err == nil {
 		t.Error("a verifier with no configured issuer accepted a foreign one")
 	}
@@ -269,5 +269,40 @@ func TestVerifierRefusesWhatTheCopiesAccepted(t *testing.T) {
 	h.Set("Authorization", "Bearer "+mint(priv, "cert-hanzo", "https://hanzo.id", "hanzo-console"))
 	if _, err := v.Verify(h); err != nil {
 		t.Errorf("Verify(Headers): %v", err)
+	}
+}
+
+// A deployment fronts several brands and each signs under its own issuer. A single
+// expected issuer cannot express that, and the service that needed it wrote its own
+// reader rather than go without — so the allowlist is why that reader can now go.
+func TestIssuerAllowlistAdmitsEveryBrandAndNothingElse(t *testing.T) {
+	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
+	url, _ := serveJWKS(t, map[string]any{"keys": []map[string]any{{
+		"kty": "RSA", "kid": "k", "use": "sig",
+		"n": b64u(priv.N.Bytes()), "e": b64u(big.NewInt(int64(priv.E)).Bytes()),
+	}}})
+
+	mint := func(issuer string) string {
+		c := &authz.Claims{Owner: "acme", PreferredUsername: "a",
+			Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}
+		c.Issuer = issuer
+		c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour))
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, c)
+		tok.Header["kid"] = "k"
+		s, _ := tok.SignedString(priv)
+		return s
+	}
+
+	brands := []string{"https://hanzo.id", "https://lux.id", "https://zoo.id"}
+	v := edge.NewVerifier(url, brands, nil, time.Minute)
+	for _, iss := range brands {
+		if _, err := v.VerifyRaw(mint(iss)); err != nil {
+			t.Errorf("brand issuer %s was refused: %v", iss, err)
+		}
+	}
+	for _, iss := range []string{"https://evil.test", "https://hanzo.id.evil.test", "https://hanzo.id/", ""} {
+		if _, err := v.VerifyRaw(mint(iss)); err == nil {
+			t.Errorf("issuer %q was trusted", iss)
+		}
 	}
 }
