@@ -140,14 +140,23 @@ func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 	set(authz.HeaderOrg, effective)
 	set(authz.HeaderUserOwner, cl.Owner) // the immutable HOME org, distinct from the effective one
 
-	// The sub-scopes are taken from Location rather than read off the claims, so the
-	// three headers and the path they describe cannot disagree: Location stops at the
-	// first absent or non-injective segment, so a project under no workspace mints no
-	// project header instead of one that would read as a workspace of that name.
-	if loc := cl.Location(selected); len(loc) > 1 {
-		set(authz.HeaderWorkspace, loc[1])
-		if len(loc) > 2 {
-			set(authz.HeaderProject, loc[2])
+	// The sub-scopes are minted per CLAIM, each its own scalar and each refused if it
+	// is not an injective identifier.
+	//
+	// Deliberately NOT assembled from [Claims.Location]: a project may sit directly
+	// under an org (IAM emits `project` today and no `workspace` at all), and a
+	// Location — which needs each segment's parent to be a path at all — would
+	// suppress the project header entirely and silently drop a scope that works now.
+	// The two answer different questions: these headers say WHICH project, Location
+	// says what path the token names. A consumer that wants the path reads
+	// HeaderScope, which carries the RESOLVED one; assembling a path out of these
+	// scalars is what would let a workspace and a project of the same name collide.
+	for name, seg := range map[string]string{
+		authz.HeaderWorkspace: cl.Workspace,
+		authz.HeaderProject:   cl.Project,
+	} {
+		if !authz.HasUnsafeRune(seg) {
+			set(name, seg)
 		}
 	}
 	set(authz.HeaderUser, cl.UserID())
