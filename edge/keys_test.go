@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -191,5 +192,82 @@ func TestNoKeysMeansNoVerification(t *testing.T) {
 	}
 	if _, err := authz.Verify("not.a.token", keys.Resolve, "https://hanzo.id"); err == nil {
 		t.Error("verification succeeded with no key material")
+	}
+}
+
+// The Verifier is the whole check in one place: keys, issuer, audience. These are
+// the two mistakes each hand-written copy made — one tried every key in the set
+// instead of the one the token named, another skipped the issuer comparison when its
+// configured issuer was empty.
+func TestVerifierRefusesWhatTheCopiesAccepted(t *testing.T) {
+	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
+	other, _ := rsa.GenerateKey(rand.Reader, 2048)
+	url, _ := serveJWKS(t, map[string]any{"keys": []map[string]any{
+		{"kty": "RSA", "kid": "cert-hanzo", "use": "sig",
+			"n": b64u(priv.N.Bytes()), "e": b64u(big.NewInt(int64(priv.E)).Bytes())},
+		{"kty": "RSA", "kid": "cert-other", "use": "sig",
+			"n": b64u(other.N.Bytes()), "e": b64u(big.NewInt(int64(other.E)).Bytes())},
+	}})
+
+	mint := func(key *rsa.PrivateKey, kid, issuer, aud string) string {
+		c := &authz.Claims{Owner: "acme", PreferredUsername: "alice",
+			Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}
+		c.Issuer = issuer
+		c.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour))
+		if aud != "" {
+			c.Audience = []string{aud}
+		}
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, c)
+		if kid != "" {
+			tok.Header["kid"] = kid
+		}
+		s, err := tok.SignedString(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+
+	v := edge.NewVerifier(url, "https://hanzo.id", []string{"hanzo-console"}, time.Minute)
+
+	if _, err := v.VerifyRaw(mint(priv, "cert-hanzo", "https://hanzo.id", "hanzo-console")); err != nil {
+		t.Fatalf("a good token was refused: %v", err)
+	}
+
+	// Signed by a key that IS published, but under a kid the token does not name.
+	// A reader that loops over every key in the set accepts this; naming a key is
+	// the whole point of `kid`.
+	if _, err := v.VerifyRaw(mint(other, "cert-hanzo", "https://hanzo.id", "hanzo-console")); err == nil {
+		t.Error("a token verified against a key it did not name")
+	}
+	// No kid at all — refused rather than tried against the set.
+	if _, err := v.VerifyRaw(mint(priv, "", "https://hanzo.id", "hanzo-console")); err == nil {
+		t.Error("a token naming no key verified")
+	}
+	// A foreign issuer.
+	if _, err := v.VerifyRaw(mint(priv, "cert-hanzo", "https://evil.test", "hanzo-console")); err == nil {
+		t.Error("a foreign issuer verified")
+	}
+	// An audience outside the allowlist.
+	if _, err := v.VerifyRaw(mint(priv, "cert-hanzo", "https://hanzo.id", "someone-elses-app")); err == nil {
+		t.Error("an unaccepted audience verified")
+	}
+	// Absent is distinct from invalid, so a caller can fall through instead of refusing.
+	if _, err := v.VerifyRaw(""); !errors.Is(err, edge.ErrNoToken) {
+		t.Errorf("an absent credential gave %v, want ErrNoToken", err)
+	}
+
+	// An EMPTY configured issuer must refuse everything. The copies made this a
+	// skipped comparison, which accepts a token from any issuer.
+	blind := edge.NewVerifier(url, "", nil, time.Minute)
+	if _, err := blind.VerifyRaw(mint(priv, "cert-hanzo", "https://evil.test", "")); err == nil {
+		t.Error("a verifier with no configured issuer accepted a foreign one")
+	}
+
+	// The credential is read off the request too, not only passed in raw.
+	h := http.Header{}
+	h.Set("Authorization", "Bearer "+mint(priv, "cert-hanzo", "https://hanzo.id", "hanzo-console"))
+	if _, err := v.Verify(h); err != nil {
+		t.Errorf("Verify(Headers): %v", err)
 	}
 }
