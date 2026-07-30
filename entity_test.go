@@ -27,7 +27,10 @@ func TestAppIsNeverAdminNorSudo(t *testing.T) {
 		IsAdmin: true,
 		App:     &App{Name: "hanzo-console", Owner: AdminOrg, Cert: "cert-hanzo"},
 	}
-	c.TokenType = machineType
+	// …and the token even carries a membership set, so the App statement is what
+	// closes this on its own rather than leaning on the membership signal.
+	c.TokenType = "access-token"
+	c.Orgs = []Membership{{Org: AdminOrg, Role: Owner}}
 
 	if c.PlatformSudo() {
 		t.Error("an app principal may act cross-tenant")
@@ -204,9 +207,13 @@ func TestKMSMachineReadsOnlyItsOwnOrgProjects(t *testing.T) {
 // its own record and cannot write it (a write would carry isAdmin — self-promotion).
 func TestRegistryHumanScopes(t *testing.T) {
 	env := allow(nil)
-	sudo := &Claims{Owner: AdminOrg, PreferredUsername: "z"}
-	orgAdmin := &Claims{Owner: "acme", PreferredUsername: "boss", IsAdmin: true}
-	user := &Claims{Owner: "acme", PreferredUsername: "alice"}
+	// Each carries the home-org membership every user token IAM signs, first entry.
+	sudo := &Claims{Owner: AdminOrg, PreferredUsername: "z",
+		Orgs: []Membership{{Org: AdminOrg, Role: Admin}}}
+	orgAdmin := &Claims{Owner: "acme", PreferredUsername: "boss", IsAdmin: true,
+		Orgs: []Membership{{Org: "acme", Role: Admin}}}
+	user := &Claims{Owner: "acme", PreferredUsername: "alice",
+		Orgs: []Membership{{Org: "acme", Role: Member}}}
 
 	if !sudo.CanEntity(Write, Entity{Kind: "certs", Owner: AdminOrg, Name: "cert-hanzo"}, env) {
 		t.Error("platform sudo cannot write platform trust material")

@@ -229,8 +229,11 @@ func TestClaimsGrantsProjectMemberships(t *testing.T) {
 // The platform operator acts anywhere, and only as a HUMAN: an admin-org machine
 // identity is not a cross-tenant principal.
 func TestPlatformSudoIsCrossTenantOnlyForHumans(t *testing.T) {
-	human := &Claims{Owner: AdminOrg, PreferredUsername: "z"}
-	machine := &Claims{Owner: AdminOrg, PreferredUsername: "kms", TokenType: "application"}
+	// The human carries the home-org membership IAM signs into every user token; the
+	// machine carries none, which is the shape IAM's client_credentials grant mints.
+	human := &Claims{Owner: AdminOrg, PreferredUsername: "z",
+		Orgs: []Membership{{Org: AdminOrg, Role: Admin}}}
+	machine := &Claims{Owner: AdminOrg, PreferredUsername: "kms", TokenType: "access-token"}
 
 	if !human.Can(Write, path(t, "victim/prod"), nil) {
 		t.Error("the platform operator was refused a cross-tenant write")

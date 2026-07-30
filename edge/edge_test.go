@@ -60,12 +60,15 @@ func TestOrgOwnerIsNotAPlatformAdmin(t *testing.T) {
 // not the org-admin one (a client_credentials app is issued for a purpose, not
 // handed an org's self-service surface).
 func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
+	// IAM's client_credentials shape, verbatim: tokenType "access-token" and NO
+	// membership set. The fixture used to carry both an "application" tokenType IAM
+	// never mints and a membership set a machine token never has, so it asserted the
+	// refusal against a token that cannot exist.
 	machine := &authz.Claims{
 		Owner:             authz.AdminOrg,
 		PreferredUsername: "admin-platform-kms",
 		IsAdmin:           true,
-		TokenType:         "application",
-		Orgs:              []authz.Membership{{Org: authz.AdminOrg, Role: authz.Owner}},
+		TokenType:         "access-token",
 	}
 	r := req(t)
 	edge.Inject(r, machine, "victim", nil)
@@ -84,7 +87,14 @@ func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
 // A HUMAN platform operator does carry sudo, and carries it into another tenant
 // without acquiring that tenant's self-service authority.
 func TestPlatformOperatorActsInAnotherTenantWithoutOrgAdmin(t *testing.T) {
-	op := &authz.Claims{Owner: authz.AdminOrg, PreferredUsername: "z", IsAdmin: true}
+	// A user token always carries its home org first (store.MemberOrgRefs), so a real
+	// operator is distinguishable from an app in the same org by what IAM signed.
+	op := &authz.Claims{
+		Owner:             authz.AdminOrg,
+		PreferredUsername: "z",
+		IsAdmin:           true,
+		Orgs:              []authz.Membership{{Org: authz.AdminOrg, Role: authz.Admin}},
+	}
 	r := req(t)
 	edge.Inject(r, op, "victim", nil)
 

@@ -113,39 +113,39 @@ type Claims struct {
 // disagree.
 const AdminOrg = "admin"
 
-// machineType is IAM's `type` for a client_credentials identity.
-const machineType = "application"
-
-// kmsAudienceSuffix is the audience a per-org KMS sync identity carries:
-// "<owner>-platform-kms". It is bound to the token's OWN owner, so matching it
-// certifies "the KMS machine for its own org" and widens nothing.
-const kmsAudienceSuffix = "-platform-kms"
-
 // Machine reports whether these claims belong to a machine rather than a person.
 //
-// Three signals, unioned: an App principal IS a confidential client and so is
-// never a person; IAM's `type` names a client_credentials identity; and the
-// owner-bound KMS audience covers a token minted before that claim existed.
+// The signal is the MEMBERSHIP SET, because that is the one IAM guarantees. A
+// person's token always carries at least their home org: store.MemberOrgRefs
+// opens with {user.Owner, HomeRole(user)} before it appends anything else, so
+// every user token IAM signs has a non-empty `orgs`. A client_credentials token
+// carries none — IAM's own token.go says why, at the call that mints it: "a
+// machine token has no user and therefore no membership set", so "an app token can
+// never carry a tenancy it did not earn".
 //
-// It fails closed toward HUMAN on the last two: an unknown or empty type is not a
-// machine, so a real operator carrying no `type` is never locked out.
+// This is not an inference about token shape, it is the semantics: authority here
+// IS membership, and an identity with no memberships has none to hold.
+//
+// It fails closed. A user token whose membership set did not resolve reads as a
+// machine and loses the two admin scopes; it does not gain them.
+//
+// An App principal is a confidential client by construction — IAM resolves it from
+// its own application row after verification, so it is a statement rather than a
+// claim, and it stands on its own.
+//
+// WHAT THIS REPLACES: `tokenType == "application"` and an owner-bound
+// "<owner>-platform-kms" audience. IAM assigns `tokenType` exactly two values,
+// "access-token" and "id-token" (internal/oidc/jwt.go), and never "application" —
+// so the check could not fire, and every machine fell through to the audience
+// clause, which only matches one identity in the estate. An admin-org
+// client_credentials token therefore read as a HUMAN and PlatformSudo admitted it:
+// cross-tenant reads plus the platform header the money gates trust. The tests
+// covering it built their machine with the value IAM never mints, so they passed.
 func (c *Claims) Machine() bool {
 	if c == nil {
 		return false
 	}
-	if c.App != nil || c.TokenType == machineType {
-		return true
-	}
-	if c.Owner == "" {
-		return false
-	}
-	want := c.Owner + kmsAudienceSuffix
-	for _, a := range c.Audience {
-		if a == want {
-			return true
-		}
-	}
-	return false
+	return c.App != nil || len(c.Orgs) == 0
 }
 
 // PlatformSudo reports platform authority: a HUMAN whose HOME org is the reserved
