@@ -1,5 +1,5 @@
 // Package edge is the identity boundary: it strips what a client claimed, verifies
-// the credential, and mints the headers everything behind it reads.
+// the credential, and writes the headers everything behind it reads.
 //
 // It is SEPARATE from the decision (package authz) on purpose. A decision is a pure
 // function of claims — Can(subject, verb, path) — and every plugin in the fleet asks
@@ -13,7 +13,7 @@
 //
 // ONE EDGE, NOT ONE PER TRANSPORT. The estate serves on zip and also fronts an
 // HTTP proxy edge, and when each held its own copy of this reasoning they drifted:
-// the platform-authority header was corrected in one and went on being minted from
+// the platform-authority header was corrected in one and went on being written from
 // an org role in the other. So the rules here take a [Headers] — the three
 // operations rewriting an identity needs — which net/http's own header type
 // satisfies as written and a zip request reaches through [Of].
@@ -68,15 +68,15 @@ func (p peeker) Del(name string)        { p.h.Del(name) }
 // Strip deletes every identity header a client supplied and returns the org it had
 // CLAIMED, which is an input to scope selection and never an authority.
 //
-// The claimed org is RETURNED rather than left on the request precisely so it
-// cannot be mistaken for a minted one: the only way to act on it is to hand it to
-// Inject, which admits it only if the signed membership set does.
+// The claimed org is RETURNED rather than left on the request precisely so it cannot
+// be mistaken for a verified one: the only way to act on it is to hand it to Render,
+// which admits it only if the signed membership set does.
 //
 // The capture and the strip are ONE operation because the selection must be read
 // BEFORE the header is deleted. A separate "read it first" function would be an
 // ordering trap that fails silently — the org switcher would simply stop working —
 // and a caller that ignores the return value keeps the safe behaviour: nothing
-// claimed, nothing minted.
+// claimed, nothing written.
 func Strip(h Headers) (claimedOrg string) {
 	if h == nil {
 		return ""
@@ -94,43 +94,51 @@ func Strip(h Headers) (claimedOrg string) {
 	return claimedOrg
 }
 
-// Inject applies [Mint] — the identity a verified token entitles this request to
-// carry — to the headers the next tier reads.
-func Inject(h Headers, cl *authz.Claims, selected string, at *authz.Grant) {
+// Apply writes [Render]'s output to the headers the next tier reads. It is [Strip]'s
+// counterpart: one deletes what a client claimed, the other writes what a token
+// proved.
+func Apply(h Headers, cl *authz.Claims, selected string, at *authz.Grant) {
 	if h == nil {
 		return
 	}
-	for _, m := range Mint(cl, selected, at) {
+	for _, m := range Render(cl, selected, at) {
 		h.Set(m.Name, m.Value)
 	}
 }
 
-// Header is one minted name and its value.
+// Header is one header name and its value.
 type Header struct{ Name, Value string }
 
-// Mint is the identity decision AS A VALUE: the headers a verified token entitles
-// this request to carry, with the zero values already dropped.
+// Render is the identity AS A VALUE: the headers a verified token entitles this
+// request to carry, with the zero values already dropped.
+//
+// It RENDERS rather than mints. Minting is issuing authority, and only IAM does that
+// — it signs the token. Nothing here creates any: the authority already exists,
+// signed, and this restates it in the form a transport that cannot carry a token can
+// read. Calling both operations "mint" put the issuer's job and the edge's under one
+// word, and a word that covers two operations is a word that stops distinguishing
+// them.
 //
 // selected is the org the client asked to act in, as returned by [Strip]; it is
 // honoured only when the signed membership set admits it, or when the caller may
 // masquerade. at is the grant the edge RESOLVED for this request, or nil when none
-// was requested — and it is minted only when it belongs to THIS subject, because an
+// was requested — and it is rendered only when it belongs to THIS subject, because an
 // edge forwarding a grant resolved for anyone else is the whole class of bug this
 // package exists to prevent, one tier deeper.
 //
 // TWO ADMIN SCOPES, TWO HEADERS, never interchangeable. HeaderUserAdmin is PLATFORM
-// authority — a human whose home org is the reserved admin org. HeaderUserOrgAdmin
-// is admin of one's OWN org, resolved against the EFFECTIVE org so an operator
-// viewing another tenant carries sudo without that tenant's self-service authority.
+// authority — a human whose HOME org is the reserved admin org. HeaderUserOrgAdmin is
+// admin of one's OWN org, resolved against the EFFECTIVE org so an operator viewing
+// another tenant carries sudo without that tenant's self-service authority.
 //
-// Minting the platform header from Claims.IsAdmin — the ORG-role bit — is the
+// Writing the platform header from Claims.IsAdmin — the ORG-role bit — is the
 // escalation this package makes unrepeatable: every org owner arrived as a platform
 // admin, and the money gates read that header.
 //
-// Absent is distinct from empty throughout: a header whose value is the zero value
-// is not in the slice, so applying it never writes a header the token did not earn
-// and never blanks one.
-func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
+// Absent is distinct from empty throughout: a header whose value is the zero value is
+// not in the slice, so applying it never writes a header the token did not earn and
+// never blanks one.
+func Render(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 	if cl == nil {
 		return nil
 	}
@@ -143,9 +151,11 @@ func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 		}
 	}
 	set(authz.HeaderOrg, effective)
-	set(authz.HeaderUserOwner, cl.Owner) // the immutable HOME org, distinct from the effective one
+	// The subject's own org, from their membership — NOT the `owner` claim, which
+	// carries the org of whichever APPLICATION minted the token.
+	set(authz.HeaderUserOwner, cl.Home())
 
-	// The sub-scopes are minted per CLAIM, each its own scalar and each refused if it
+	// The sub-scopes are rendered per CLAIM, each its own scalar and each refused if it
 	// is not an injective identifier.
 	//
 	// Deliberately NOT assembled from [Claims.Location]: a project may sit directly
@@ -170,8 +180,8 @@ func Mint(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 	set(authz.HeaderBillingAccount, cl.BillingAccount)
 
 	// The resolved LOCATION travels, not the grant set: the edge resolves once and
-	// mints the outcome, so the token stays constant-size and no decision behind
-	// the edge performs I/O. A grant belonging to another subject is not minted.
+	// renders the outcome, so the token stays constant-size and no decision behind the
+	// edge performs I/O. A grant belonging to another subject is not rendered.
 	if at != nil && at.Subject == cl.UserID() && len(at.Scope) > 0 {
 		set(authz.HeaderScope, at.Scope.String())
 		set(authz.HeaderScopeRole, string(at.Role))

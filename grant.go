@@ -29,7 +29,7 @@
 // Containment NAMES; grants AUTHORIZE. The two are not re-braided here.
 //
 // Grants do not all ride in a token. The edge resolves the requested scope ONCE
-// and mints the resolved path and role, so the token is constant-size and no
+// and writes the resolved path and role, so the token is constant-size and no
 // decision behind the edge performs I/O. The grant SET stays in IAM, which signs
 // it; the resolved DECISION travels.
 package authz

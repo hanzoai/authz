@@ -28,10 +28,10 @@ func TestBothTransportsMintTheSameIdentity(t *testing.T) {
 
 	for _, selected := range []string{"", "beta", "victim"} {
 		zipped := req(t)
-		edge.Inject(edge.Of(&zipped.Fiber().Request().Header), cl, selected, nil)
+		edge.Apply(edge.Of(&zipped.Fiber().Request().Header), cl, selected, nil)
 
 		plain := http.Header{}
-		edge.Inject(plain, cl, selected, nil)
+		edge.Apply(plain, cl, selected, nil)
 
 		for _, name := range append(append([]string{}, authz.Headers...), authz.Retired...) {
 			z, p := hdr(zipped, name), plain.Get(name)
@@ -149,8 +149,8 @@ func TestPeekerShapeMatchesNetHTTP(t *testing.T) {
 
 	bytes := edge.Of(bytesHeader{m: map[string]string{}})
 	plain := http.Header{}
-	edge.Inject(bytes, cl, "", nil)
-	edge.Inject(plain, cl, "", nil)
+	edge.Apply(bytes, cl, "", nil)
+	edge.Apply(plain, cl, "", nil)
 
 	for _, name := range authz.Headers {
 		if b, p := bytes.Get(name), plain.Get(name); b != p {
