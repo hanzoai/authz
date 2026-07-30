@@ -38,8 +38,13 @@ func TestAdminOrgMachineHoldsNoPlatformAuthority(t *testing.T) {
 	if c.PlatformSudo() {
 		t.Error("an admin-org machine holds platform sudo")
 	}
-	if org, switched := c.EffectiveOrg("victim"); switched || org != AdminOrg {
-		t.Errorf("an admin-org machine masqueraded into another tenant: got %q switched=%v", org, switched)
+	// It resolves NO org at all, which is stricter than pinning it to its own: the only
+	// claim carrying a machine's org is `owner`, and that claim is indistinguishable
+	// from the app a HUMAN signed in through. A consumer that positively identifies a
+	// machine — cloud, from the API key it authenticated or the owner-bound KMS
+	// audience — supplies that org itself rather than reading it out of a claim.
+	if org, switched := c.EffectiveOrg("victim"); switched || org != "" {
+		t.Errorf("an admin-org machine resolved %q (switched=%v), want no org", org, switched)
 	}
 	if c.Can(Read, Path{"victim", "prod"}, nil) {
 		t.Error("an admin-org machine may read another tenant")
@@ -121,8 +126,8 @@ func TestPayingIsNotActing(t *testing.T) {
 // refused the selection — the two compose to "your own org pays" with no extra rule.
 func TestMachineCannotMoveTheLedger(t *testing.T) {
 	m := iamClientCredentials(AdminOrg)
-	if payer := m.LedgerOrg("victim"); payer != AdminOrg {
-		t.Errorf("an admin-org machine billed %q", payer)
+	if payer := m.LedgerOrg("victim"); payer != "" {
+		t.Errorf("an admin-org machine billed %q, want nothing", payer)
 	}
 }
 

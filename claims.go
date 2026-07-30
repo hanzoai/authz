@@ -7,7 +7,7 @@
 // signs.
 //
 // They drifted, in the direction that matters. IsAdmin is IAM's ORG-level role
-// bit; the edge minted the fleet's PLATFORM-authority header from it, so any org
+// bit; the edge wrote the fleet's PLATFORM-authority header from it, so any org
 // owner arrived as a platform admin — cross-org reads and the money gates. The
 // meaning of a claim was never published by the party that assigns it, so a reader
 // was free to guess, and one did.
@@ -53,7 +53,7 @@ type App struct {
 }
 
 // Claims are the claims Hanzo IAM mints. internal/oidc signs THIS type, so the
-// minter and every reader share one definition and cannot disagree about a
+// issuer and every reader share one definition and cannot disagree about a
 // field's name, presence or meaning.
 type Claims struct {
 	jwt.RegisteredClaims
@@ -63,9 +63,18 @@ type Claims struct {
 	Email        string `json:"email,omitempty"`
 	Name         string `json:"name,omitempty"`
 
-	// Owner is the org the subject BELONGS TO — the home org, the identity and
-	// billing anchor. It is the platform-sudo signal (owner == AdminOrg) and is
-	// NOT the same question as which org a request is acting in.
+	// Owner is the org of the APPLICATION the token was minted through, NOT the
+	// subject's own. IAM's Sign stamps `Owner: app.Organization` for every
+	// authorization_code and refresh token (internal/oidc/jwt.go), so it follows
+	// whichever app a person signed in through.
+	//
+	// IT IS THEREFORE NOT AUTHORITY, and reading it as the home org makes platform
+	// sudo a property of the APPLICATION: anyone signing in through an app owned by
+	// the reserved org would arrive as a platform admin. Use [Claims.Home], which
+	// reads the subject's own membership.
+	//
+	// It is still worth carrying: for a client_credentials token the app IS the
+	// subject, so this is that machine's own org, and Home says so.
 	Owner string `json:"owner,omitempty"`
 
 	// PreferredUsername is the IAM USERNAME — the `<name>` half of
@@ -125,6 +134,29 @@ type Claims struct {
 // disagree.
 const AdminOrg = "admin"
 
+// Home is the org the SUBJECT belongs to — the identity and billing anchor, and the
+// only org that confers authority.
+//
+// It is the first entry of the membership set, which store.MemberOrgRefs builds
+// home-first from the user row: `refs := []OrgRef{{Org: user.Owner, …}}` before any
+// other membership. That is the subject's OWN org, resolved from the user record
+// rather than from whichever application minted the token.
+//
+// It deliberately does NOT fall back to the `owner` claim. Falling back is precisely
+// the app-selected value this exists to stop trusting, and empty means empty: a token
+// with no membership set resolves NO home org and every gate above must fail closed.
+//
+// For a MACHINE the app IS the subject, so its own org is the `owner` claim and there
+// is no user to mis-attribute — but a machine holds no admin scope either way
+// (see [Claims.Machine]), so this returns empty for one and the callers that need a
+// machine's org read it from the credential that authenticated it.
+func (c *Claims) Home() string {
+	if c == nil || len(c.Orgs) == 0 {
+		return ""
+	}
+	return c.Orgs[0].Org
+}
+
 // Machine reports whether these claims belong to a machine rather than a person.
 //
 // The signal is the MEMBERSHIP SET, because that is the one IAM guarantees. A
@@ -179,7 +211,7 @@ func (c *Claims) PlatformSudo() bool {
 	if c == nil || c.Machine() {
 		return false
 	}
-	return c.Owner == AdminOrg
+	return c.Home() == AdminOrg
 }
 
 // OrgAdmin reports whether these claims administer the named org — admin OF
@@ -196,7 +228,7 @@ func (c *Claims) OrgAdmin(org string) bool {
 	if c == nil || c.Machine() || org == "" {
 		return false
 	}
-	if c.IsAdmin && org == c.Owner {
+	if c.IsAdmin && org == c.Home() {
 		return true
 	}
 	for _, m := range c.Orgs {
@@ -217,7 +249,7 @@ func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 	if c == nil {
 		return "", false
 	}
-	home := c.Owner
+	home := c.Home()
 	if selected == "" || selected == home || HasUnsafeRune(selected) {
 		return home, false
 	}
@@ -250,7 +282,7 @@ func (c *Claims) LedgerOrg(selected string) string {
 		return ""
 	}
 	if c.PlatformSudo() {
-		return c.Owner
+		return c.Home()
 	}
 	org, _ := c.EffectiveOrg(selected)
 	return org

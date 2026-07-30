@@ -39,7 +39,7 @@ func TestOrgOwnerIsNotAPlatformAdmin(t *testing.T) {
 		Orgs:              []authz.Membership{{Org: "acme", Role: authz.Owner}},
 	}
 	r := req(t)
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), owner, "", nil)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), owner, "", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
 		t.Errorf("an org owner was minted PLATFORM authority %s=%q", authz.HeaderUserAdmin, got)
@@ -71,7 +71,7 @@ func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
 		TokenType:         "access-token",
 	}
 	r := req(t)
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), machine, "victim", nil)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), machine, "victim", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
 		t.Errorf("an admin-org machine was minted %s=%q", authz.HeaderUserAdmin, got)
@@ -79,8 +79,12 @@ func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
 	if got := hdr(r, authz.HeaderUserOrgAdmin); got != "" {
 		t.Errorf("an admin-org machine was minted %s=%q", authz.HeaderUserOrgAdmin, got)
 	}
-	if got := hdr(r, authz.HeaderOrg); got != authz.AdminOrg {
-		t.Errorf("a machine masqueraded into %q", got)
+	// NO org at all, which is stricter than pinning it to its own: a machine's org
+	// lives only in the `owner` claim, and that claim is indistinguishable from the
+	// app a HUMAN signed in through. Whoever positively identifies a machine supplies
+	// its org; nothing is read out of a claim that cannot tell the two apart.
+	if got := hdr(r, authz.HeaderOrg); got != "" {
+		t.Errorf("a machine was minted %s=%q, want none", authz.HeaderOrg, got)
 	}
 }
 
@@ -96,7 +100,7 @@ func TestPlatformOperatorActsInAnotherTenantWithoutOrgAdmin(t *testing.T) {
 		Orgs:              []authz.Membership{{Org: authz.AdminOrg, Role: authz.Admin}},
 	}
 	r := req(t)
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), op, "victim", nil)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), op, "victim", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "true" {
 		t.Errorf("the platform operator lost %s", authz.HeaderUserAdmin)
@@ -149,7 +153,7 @@ func TestForgedAuthorityAndScopeHeadersNeverSurvive(t *testing.T) {
 	edge.Strip(edge.Of(&r.Fiber().Request().Header))
 
 	// An ordinary member, re-minted from verified claims, gets none of them back.
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), &authz.Claims{Owner: "acme", PreferredUsername: "u", Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}, "", nil)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), &authz.Claims{Owner: "acme", PreferredUsername: "u", Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}}}, "", nil)
 	for _, h := range []string{authz.HeaderUserAdmin, authz.HeaderWorkspace, authz.HeaderProject, authz.HeaderScope, authz.HeaderScopeRole} {
 		if got := hdr(r, h); got != "" {
 			t.Errorf("forged %s came back as %q", h, got)
@@ -177,7 +181,7 @@ func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
 	theirs := &authz.Grant{Subject: "acme/other", Scope: authz.Path{"acme", "prod", "web"}, Role: authz.Owner}
 
 	r := req(t)
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), c, "", mine)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), c, "", mine)
 	if got := hdr(r, authz.HeaderScope); got != "acme/prod/web" {
 		t.Errorf("%s = %q, want the resolved scope", authz.HeaderScope, got)
 	}
@@ -186,7 +190,7 @@ func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
 	}
 
 	r = req(t)
-	edge.Inject(edge.Of(&r.Fiber().Request().Header), c, "", theirs)
+	edge.Apply(edge.Of(&r.Fiber().Request().Header), c, "", theirs)
 	if got := hdr(r, authz.HeaderScope); got != "" {
 		t.Errorf("another subject's resolved scope was minted: %q", got)
 	}
@@ -239,7 +243,7 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 				Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}},
 			}
 			r := req(t)
-			edge.Inject(edge.Of(&r.Fiber().Request().Header), cl, "", nil)
+			edge.Apply(edge.Of(&r.Fiber().Request().Header), cl, "", nil)
 
 			if got := hdr(r, authz.HeaderWorkspace); got != c.wantWorkspace {
 				t.Errorf("%s = %q, want %q", authz.HeaderWorkspace, got, c.wantWorkspace)
@@ -273,7 +277,7 @@ func TestEveryMintedNameIsStripped(t *testing.T) {
 	cl.Subject = "uuid-z"
 	at := &authz.Grant{Subject: "uuid-z", Scope: authz.Path{"admin", "prod", "web"}, Role: authz.Admin}
 
-	minted := edge.Mint(cl, "", at)
+	minted := edge.Render(cl, "", at)
 	if len(minted) == 0 {
 		t.Fatal("Mint emitted nothing for a full claim set")
 	}
