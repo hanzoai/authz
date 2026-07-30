@@ -86,3 +86,71 @@ func TestTenantMachineIsNeitherAdminScope(t *testing.T) {
 		t.Error("a tenant machine administers its own org")
 	}
 }
+
+// ACTING and PAYING are different questions. An operator viewing a customer's org
+// reads the customer's data and spends the OPERATOR's ledger; a member who switches
+// to a team org spends THAT org's. One function answering both would have to pick,
+// and either pick is wrong for the other case.
+func TestPayingIsNotActing(t *testing.T) {
+	operator := &Claims{Owner: AdminOrg, PreferredUsername: "z",
+		Orgs: []Membership{{Org: AdminOrg, Role: Admin}}}
+	member := &Claims{Owner: "acme", PreferredUsername: "alice",
+		Orgs: []Membership{{Org: "acme", Role: Member}, {Org: "beta", Role: Member}}}
+
+	if org, _ := operator.EffectiveOrg("customer"); org != "customer" {
+		t.Errorf("the operator acts in %q, want the viewed tenant", org)
+	}
+	if payer := operator.LedgerOrg("customer"); payer != AdminOrg {
+		t.Errorf("the operator spends %q — a viewed tenant must not fund the visit", payer)
+	}
+
+	if org, _ := member.EffectiveOrg("beta"); org != "beta" {
+		t.Errorf("the member acts in %q, want the selected org", org)
+	}
+	if payer := member.LedgerOrg("beta"); payer != "beta" {
+		t.Errorf("the member spends %q, want the org acted in", payer)
+	}
+	// A selection outside the membership set funds nothing but the caller's own org.
+	if payer := member.LedgerOrg("victim"); payer != "acme" {
+		t.Errorf("an ungranted selection billed %q", payer)
+	}
+}
+
+// A machine cannot move the ledger. It reads as a machine, so PlatformSudo is
+// false, so LedgerOrg takes the ordinary branch and EffectiveOrg has already
+// refused the selection — the two compose to "your own org pays" with no extra rule.
+func TestMachineCannotMoveTheLedger(t *testing.T) {
+	m := iamClientCredentials(AdminOrg)
+	if payer := m.LedgerOrg("victim"); payer != AdminOrg {
+		t.Errorf("an admin-org machine billed %q", payer)
+	}
+}
+
+// Location stops at the first absent segment, so a project under no workspace can
+// never print as a workspace of the same name.
+func TestLocationStopsAtTheFirstGap(t *testing.T) {
+	base := func() *Claims {
+		return &Claims{Owner: "acme", PreferredUsername: "alice",
+			Orgs: []Membership{{Org: "acme", Role: Member}}}
+	}
+	for _, c := range []struct {
+		name      string
+		workspace string
+		project   string
+		want      string
+	}{
+		{"org only", "", "", "acme"},
+		{"workspace", "prod", "", "acme/prod"},
+		{"full", "prod", "web", "acme/prod/web"},
+		{"project with no workspace stops at the org", "", "web", "acme"},
+		{"a non-injective workspace ends the path", "prod ", "web", "acme"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cl := base()
+			cl.Workspace, cl.Project = c.workspace, c.project
+			if got := cl.Location("").String(); got != c.want {
+				t.Errorf("Location = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

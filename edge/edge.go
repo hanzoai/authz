@@ -80,6 +80,17 @@ func Inject(c *zip.Ctx, cl *authz.Claims, selected string, at *authz.Grant) {
 	}
 	set(authz.HeaderOrg, effective)
 	set(authz.HeaderUserOwner, cl.Owner) // the immutable HOME org, distinct from the effective one
+
+	// The sub-scopes are taken from Location rather than read off the claims, so the
+	// three headers and the path they describe cannot disagree: Location stops at the
+	// first absent or non-injective segment, so a project under no workspace mints no
+	// project header instead of one that would read as a workspace of that name.
+	if loc := cl.Location(selected); len(loc) > 1 {
+		set(authz.HeaderWorkspace, loc[1])
+		if len(loc) > 2 {
+			set(authz.HeaderProject, loc[2])
+		}
+	}
 	set(authz.HeaderUser, cl.UserID())
 	set(authz.HeaderUserName, cl.Username())
 	set(authz.HeaderUserEmail, cl.Email)
