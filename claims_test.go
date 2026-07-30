@@ -24,8 +24,8 @@ func iamClientCredentials(org string) *Claims {
 // A confidential client owned by the reserved admin org must hold NO platform
 // authority. It is the case the doc comment on PlatformSudo names outright: "any
 // admin-org client_credentials identity — the KMS sync app, say — could name a
-// victim org and the edge would mint it, handing every backend that trusts the
-// minted header a cross-tenant read."
+// victim org and the edge would write it, handing every backend that trusts that
+// header a cross-tenant read."
 //
 // The narrowing has to bite on the token IAM signs, not on a token shape invented
 // by the test.
@@ -79,7 +79,7 @@ func TestAdminOrgHumanKeepsPlatformSudo(t *testing.T) {
 // Its authority is its capability allowlist, never an org's self-service surface.
 func TestTenantMachineIsNeitherAdminScope(t *testing.T) {
 	c := iamClientCredentials("acme")
-	c.IsAdmin = true // IAM's ORG-role bit, present on the row the app was minted from
+	c.IsAdmin = true // IAM's ORG-role bit, carried on the application row itself
 
 	if !c.Machine() {
 		t.Error("a tenant's client_credentials token is not recognized as a machine")

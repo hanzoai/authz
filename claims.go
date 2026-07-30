@@ -201,8 +201,8 @@ func (c *Claims) Machine() bool {
 // record in the admin org, never from a subject that merely names one), and a
 // confidential client holds none either — its whole authority is its capability
 // allowlist (entity.go). Without that, any admin-org client_credentials identity —
-// the KMS sync app, say — could name a victim org and the edge would mint it,
-// handing every backend that trusts the minted header a cross-tenant read.
+// the KMS sync app, say — could name a victim org and the edge would write it,
+// handing every backend that trusts that header a cross-tenant read.
 //
 // The org is compared VERBATIM, like every other org comparison here: folding case
 // or space would make an org someone can self-serve ("Admin", "admin ") the
