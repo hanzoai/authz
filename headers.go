@@ -48,6 +48,16 @@ const (
 	// its value is the point — the strip list has to be complete even where the write
 	// is someone else's.
 	HeaderUserPermissions = "X-User-Permissions"
+
+	// HeaderApp is the application a request is attributed to — a caller LABEL, not
+	// an isolation boundary: nothing scopes access by it, and the org header bounds
+	// any mislabel to the caller's own subtree.
+	//
+	// It is named here anyway, because it is WRITTEN at an edge and the strip list has
+	// to be complete: a name an edge writes and ingress does not delete is a name a
+	// client can set. Being a label rather than a boundary is why forging it is cheap,
+	// not a reason to leave it forgeable.
+	HeaderApp = "X-App-Id"
 )
 
 // Headers is every header the edge writes, and therefore every header it must
@@ -58,7 +68,7 @@ var Headers = []string{
 	HeaderScope, HeaderScopeRole,
 	HeaderUser, HeaderUserName, HeaderUserEmail, HeaderUserOwner,
 	HeaderUserAdmin, HeaderUserOrgAdmin, HeaderUserPermissions,
-	HeaderBillingAccount,
+	HeaderBillingAccount, HeaderApp,
 }
 
 // Retired are header names an older edge wrote and no edge writes now. They are
