@@ -212,3 +212,38 @@ func TestEffectiveOrgFailsClosedToHome(t *testing.T) {
 		}
 	}
 }
+
+// The sub-scope headers are minted from the signed claims, and only as far as the
+// location is whole. A project with no workspace above it mints no project header:
+// the two would print as one path and collide with a workspace of that name.
+func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		workspace     string
+		project       string
+		wantWorkspace string
+		wantProject   string
+	}{
+		{"neither", "", "", "", ""},
+		{"workspace only", "prod", "", "prod", ""},
+		{"both", "prod", "web", "prod", "web"},
+		{"project with no workspace mints neither", "", "web", "", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cl := &authz.Claims{
+				Owner: "acme", PreferredUsername: "alice",
+				Workspace: c.workspace, Project: c.project,
+				Orgs: []authz.Membership{{Org: "acme", Role: authz.Member}},
+			}
+			r := req(t)
+			edge.Inject(r, cl, "", nil)
+
+			if got := hdr(r, authz.HeaderWorkspace); got != c.wantWorkspace {
+				t.Errorf("%s = %q, want %q", authz.HeaderWorkspace, got, c.wantWorkspace)
+			}
+			if got := hdr(r, authz.HeaderProject); got != c.wantProject {
+				t.Errorf("%s = %q, want %q", authz.HeaderProject, got, c.wantProject)
+			}
+		})
+	}
+}

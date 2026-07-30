@@ -96,6 +96,18 @@ type Claims struct {
 	// round-trip. A machine token has no membership and omits the claim.
 	Orgs []Membership `json:"orgs,omitempty"`
 
+	// Workspace and Project narrow the org along the location path
+	// (org/workspace/project). Both are SUB-SCOPES, never authority: they say
+	// WHERE a request acts, and Can says whether it may. Absent means the whole
+	// scope above — a token with no project acts across the workspace, one with
+	// neither acts across the org.
+	//
+	// They are separate claims rather than one printed path because IAM signs the
+	// segments it resolved; joining them is Location's job, and a consumer that
+	// wants one segment should not have to parse a path to get it.
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
+
 	Nonce     string `json:"nonce,omitempty"`
 	Azp       string `json:"azp,omitempty"`
 	TokenType string `json:"tokenType,omitempty"`
@@ -218,6 +230,55 @@ func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 		}
 	}
 	return home, false
+}
+
+// LedgerOrg resolves WHICH ORG PAYS for a request, from the same selection
+// EffectiveOrg reads.
+//
+// It is a SECOND function with its own branch rather than a reuse of the first,
+// because acting and paying are different questions and one answer cannot serve
+// both. A platform operator inspecting a customer's org must not spend the
+// customer's money, so the ledger stays on the operator's HOME org while the data
+// scope moves to the customer. Everyone else pays from the org they act in — that
+// IS the product: a person belongs to several orgs, picks one, and that org is the
+// payer of record.
+//
+// It takes the RAW selection, exactly like EffectiveOrg, so the two can never be
+// mis-threaded by a caller passing one's output into the other.
+func (c *Claims) LedgerOrg(selected string) string {
+	if c == nil {
+		return ""
+	}
+	if c.PlatformSudo() {
+		return c.Owner
+	}
+	org, _ := c.EffectiveOrg(selected)
+	return org
+}
+
+// Location is the path a request acts AT: the effective org, then the workspace
+// and project the token names, stopping at the first absent segment.
+//
+// Stopping is what keeps a path a location. A project under no workspace would
+// print acme/web and collide with a WORKSPACE named web — two different places
+// with one name, which is the fold every identifier rule here exists to prevent.
+// A segment that is not an injective identifier ends the path for the same reason.
+func (c *Claims) Location(selected string) Path {
+	if c == nil {
+		return nil
+	}
+	org, _ := c.EffectiveOrg(selected)
+	p := Path{}
+	for _, seg := range []string{org, c.Workspace, c.Project} {
+		if seg == "" || HasUnsafeRune(seg) {
+			break
+		}
+		p = append(p, seg)
+	}
+	if len(p) == 0 {
+		return nil
+	}
+	return p
 }
 
 // UserID resolves the subject's stable identifier: `sub`, then the username,
