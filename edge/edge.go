@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/hanzoai/authz"
-	"github.com/zap-proto/zip"
 )
 
 // Headers is the header set an edge rewrites. It is the smallest surface the rules
@@ -36,25 +35,31 @@ type Headers interface {
 	Del(name string)
 }
 
-// Of adapts a zip request's headers to [Headers].
+// Peeker is the OTHER shape a header set comes in: fasthttp's, where reading
+// returns bytes. A zip request's headers are one — reach them with
 //
-// The methods are reached through an anonymous interface rather than a named
-// fasthttp type, so this package states what it needs of a header set instead of
-// naming a transport it does not otherwise depend on.
-func Of(c *zip.Ctx) Headers {
-	if c == nil {
-		return nil
-	}
-	return peeker{&c.Fiber().Request().Header}
+//	edge.Of(&c.Fiber().Request().Header)
+//
+// It is stated as an interface rather than imported as a type on purpose. Naming
+// the type would make this package depend on the whole zip/fasthttp stack, and then
+// every consumer would link it for one adapter — which is the same mistake as a
+// decision that drags an HTTP client into a caller that only wanted to ask a
+// question. Neither transport is named here; both qualify by shape.
+type Peeker interface {
+	Peek(name string) []byte
+	Set(name, value string)
+	Del(name string)
 }
 
-type peeker struct {
-	h interface {
-		Peek(string) []byte
-		Set(string, string)
-		Del(string)
+// Of adapts a byte-returning header set to [Headers].
+func Of(h Peeker) Headers {
+	if h == nil {
+		return nil
 	}
+	return peeker{h}
 }
+
+type peeker struct{ h Peeker }
 
 func (p peeker) Get(name string) string { return string(p.h.Peek(name)) }
 func (p peeker) Set(name, value string) { p.h.Set(name, value) }
