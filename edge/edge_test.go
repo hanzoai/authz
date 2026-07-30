@@ -247,3 +247,39 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 		})
 	}
 }
+
+// EVERY name Mint can emit must be one Strip deletes. This is the property that
+// makes a forged identity header impossible rather than merely unlikely: if the
+// edge could mint a name ingress does not strip, a client could send that name and
+// have it survive for any request where the token does not overwrite it.
+//
+// It is asserted over the whole reachable output — the fullest claim set plus a
+// resolved grant — rather than over a list written by hand beside authz.Headers,
+// because a hand-written list is the thing that drifts.
+func TestEveryMintedNameIsStripped(t *testing.T) {
+	strip := map[string]bool{}
+	for _, h := range append(append([]string{}, authz.Headers...), authz.Retired...) {
+		strip[h] = true
+	}
+
+	cl := &authz.Claims{
+		Owner: authz.AdminOrg, PreferredUsername: "z", Name: "Z", Email: "z@hanzo.ai",
+		IsAdmin: true, BillingAccount: "org:admin", Workspace: "prod", Project: "web",
+		Orgs: []authz.Membership{{Org: authz.AdminOrg, Role: authz.Admin}},
+	}
+	cl.Subject = "uuid-z"
+	at := &authz.Grant{Subject: "uuid-z", Scope: authz.Path{"admin", "prod", "web"}, Role: authz.Admin}
+
+	minted := edge.Mint(cl, "", at)
+	if len(minted) == 0 {
+		t.Fatal("Mint emitted nothing for a full claim set")
+	}
+	for _, m := range minted {
+		if !strip[m.Name] {
+			t.Errorf("Mint emits %s, which ingress does not strip — a client could forge it", m.Name)
+		}
+		if m.Value == "" {
+			t.Errorf("Mint emitted %s with an empty value; absent must not be spelled as empty", m.Name)
+		}
+	}
+}
