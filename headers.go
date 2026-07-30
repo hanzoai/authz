@@ -32,6 +32,18 @@ const (
 	// I/O. The grant SET stays in IAM, which signs it; the resolved DECISION travels.
 	HeaderScope     = "X-Scope"
 	HeaderScopeRole = "X-Scope-Role"
+
+	// HeaderUserPermissions carries the money authority as a bit-field: commerce
+	// gates every credit-creating and card-charging endpoint on it, with
+	// intersection semantics, so whoever carries the admin bit satisfies them all.
+	//
+	// It is named HERE, and stripped with the rest, because it is minted at the edge
+	// and a forged copy would be believed. Its VALUE is not computed here: the bit
+	// vocabulary is a deployment's commerce contract, not part of what an identity
+	// IS, so the edge that holds that contract fills it in. Naming it without owning
+	// its value is the point — the strip list has to be complete even where the mint
+	// is someone else's.
+	HeaderUserPermissions = "X-User-Permissions"
 )
 
 // Headers is every header the edge mints, and therefore every header it must
@@ -41,17 +53,14 @@ var Headers = []string{
 	HeaderOrg, HeaderWorkspace, HeaderProject,
 	HeaderScope, HeaderScopeRole,
 	HeaderUser, HeaderUserName, HeaderUserEmail, HeaderUserOwner,
-	HeaderUserAdmin, HeaderUserOrgAdmin,
+	HeaderUserAdmin, HeaderUserOrgAdmin, HeaderUserPermissions,
 	HeaderBillingAccount,
 }
 
-// retired are header names an older edge minted. They are stripped and never
-// emitted: a client that sends one must not have it believed by a consumer that
-// still reads it.
-// Retired is exported because the edge must strip these too: a name an older edge
-// minted is a name some consumer may still read, so a client that sends one must
-// not have it believed.
+// Retired are header names an older edge minted and no edge mints now. They are
+// still STRIPPED, and exported so an edge can strip them: a name some consumer may
+// still read is a name a client must not be able to set.
 var Retired = []string{
 	"X-User-IsGlobalAdmin", "X-Roles", "X-User-Role", "X-User-Roles",
-	"X-User-Permissions", "X-Tenant-Id", "X-Phone-Number", "X-Org",
+	"X-Tenant-Id", "X-Phone-Number", "X-Org",
 }
