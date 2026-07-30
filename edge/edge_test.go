@@ -42,7 +42,7 @@ func TestOrgOwnerIsNotAPlatformAdmin(t *testing.T) {
 	edge.Apply(edge.Of(&r.Fiber().Request().Header), owner, "", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
-		t.Errorf("an org owner was minted PLATFORM authority %s=%q", authz.HeaderUserAdmin, got)
+		t.Errorf("an org owner was written PLATFORM authority %s=%q", authz.HeaderUserAdmin, got)
 	}
 	if got := hdr(r, authz.HeaderUserOrgAdmin); got != "true" {
 		t.Errorf("an org owner was NOT minted %s (got %q) — the self-service surface refuses its own founder", authz.HeaderUserOrgAdmin, got)
@@ -74,17 +74,17 @@ func TestAdminOrgMachineGetsNeitherAdminHeader(t *testing.T) {
 	edge.Apply(edge.Of(&r.Fiber().Request().Header), machine, "victim", nil)
 
 	if got := hdr(r, authz.HeaderUserAdmin); got != "" {
-		t.Errorf("an admin-org machine was minted %s=%q", authz.HeaderUserAdmin, got)
+		t.Errorf("an admin-org machine was written %s=%q", authz.HeaderUserAdmin, got)
 	}
 	if got := hdr(r, authz.HeaderUserOrgAdmin); got != "" {
-		t.Errorf("an admin-org machine was minted %s=%q", authz.HeaderUserOrgAdmin, got)
+		t.Errorf("an admin-org machine was written %s=%q", authz.HeaderUserOrgAdmin, got)
 	}
 	// NO org at all, which is stricter than pinning it to its own: a machine's org
 	// lives only in the `owner` claim, and that claim is indistinguishable from the
 	// app a HUMAN signed in through. Whoever positively identifies a machine supplies
 	// its org; nothing is read out of a claim that cannot tell the two apart.
 	if got := hdr(r, authz.HeaderOrg); got != "" {
-		t.Errorf("a machine was minted %s=%q, want none", authz.HeaderOrg, got)
+		t.Errorf("a machine was written %s=%q, want none", authz.HeaderOrg, got)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestPlatformOperatorActsInAnotherTenantWithoutOrgAdmin(t *testing.T) {
 
 // Strip deletes every header the edge mints and every authz.Retired name, and hands back
 // the CLAIMED org as an input. A forged authority header never survives ingress.
-func TestStripRemovesEveryMintedAndRetiredHeader(t *testing.T) {
+func TestStripRemovesEveryWrittenAndRetiredHeader(t *testing.T) {
 	r := req(t)
 	for _, h := range append(append([]string{}, authz.Headers...), authz.Retired...) {
 		claim(r, h, "forged")
@@ -128,7 +128,7 @@ func TestStripRemovesEveryMintedAndRetiredHeader(t *testing.T) {
 	}
 	for _, h := range authz.Headers {
 		if got := hdr(r, h); got != "" {
-			t.Errorf("minted header %s survived ingress with %q", h, got)
+			t.Errorf("written header %s survived ingress with %q", h, got)
 		}
 	}
 	for _, h := range authz.Retired {
@@ -171,7 +171,7 @@ func TestStripRefusesNonInjectiveClaimedOrg(t *testing.T) {
 	}
 }
 
-// The resolved scope is minted only when it belongs to THIS subject: an edge
+// The resolved scope is written only when it belongs to THIS subject: an edge
 // forwarding a grant resolved for someone else is the same class of bug one tier
 // deeper.
 func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
@@ -192,7 +192,7 @@ func TestInjectMintsOnlyTheSubjectOwnResolvedScope(t *testing.T) {
 	r = req(t)
 	edge.Apply(edge.Of(&r.Fiber().Request().Header), c, "", theirs)
 	if got := hdr(r, authz.HeaderScope); got != "" {
-		t.Errorf("another subject's resolved scope was minted: %q", got)
+		t.Errorf("another subject's resolved scope was written: %q", got)
 	}
 }
 
@@ -217,7 +217,7 @@ func TestEffectiveOrgFailsClosedToHome(t *testing.T) {
 	}
 }
 
-// The sub-scope headers are minted per claim, each refused if it is not an
+// The sub-scope headers are written per claim, each refused if it is not an
 // injective identifier.
 func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 	for _, c := range []struct {
@@ -255,7 +255,7 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 	}
 }
 
-// EVERY name Mint can emit must be one Strip deletes. This is the property that
+// EVERY name Render can emit must be one Strip deletes. This is the property that
 // makes a forged identity header impossible rather than merely unlikely: if the
 // edge could mint a name ingress does not strip, a client could send that name and
 // have it survive for any request where the token does not overwrite it.
@@ -263,7 +263,7 @@ func TestSubScopeHeadersFollowTheLocation(t *testing.T) {
 // It is asserted over the whole reachable output — the fullest claim set plus a
 // resolved grant — rather than over a list written by hand beside authz.Headers,
 // because a hand-written list is the thing that drifts.
-func TestEveryMintedNameIsStripped(t *testing.T) {
+func TestEveryWrittenNameIsStripped(t *testing.T) {
 	strip := map[string]bool{}
 	for _, h := range append(append([]string{}, authz.Headers...), authz.Retired...) {
 		strip[h] = true
@@ -279,14 +279,14 @@ func TestEveryMintedNameIsStripped(t *testing.T) {
 
 	minted := edge.Render(cl, "", at)
 	if len(minted) == 0 {
-		t.Fatal("Mint emitted nothing for a full claim set")
+		t.Fatal("Render emitted nothing for a full claim set")
 	}
 	for _, m := range minted {
 		if !strip[m.Name] {
-			t.Errorf("Mint emits %s, which ingress does not strip — a client could forge it", m.Name)
+			t.Errorf("Render emits %s, which ingress does not strip — a client could forge it", m.Name)
 		}
 		if m.Value == "" {
-			t.Errorf("Mint emitted %s with an empty value; absent must not be spelled as empty", m.Name)
+			t.Errorf("Render emitted %s with an empty value; absent must not be spelled as empty", m.Name)
 		}
 	}
 }

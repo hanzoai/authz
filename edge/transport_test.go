@@ -16,8 +16,8 @@ var _ edge.Headers = http.Header{}
 
 // THE ANTI-DRIFT TEST. Both transports must produce a byte-identical identity from
 // identical claims. This is the property whose absence let the platform header be
-// corrected in one edge while the other went on minting it from an org role.
-func TestBothTransportsMintTheSameIdentity(t *testing.T) {
+// corrected in one edge while the other went on writing it from an org role.
+func TestBothTransportsWriteTheSameIdentity(t *testing.T) {
 	cl := &authz.Claims{
 		Owner: "acme", PreferredUsername: "founder", Name: "Founder",
 		Email: "f@acme.test", IsAdmin: true, BillingAccount: "org:acme",
