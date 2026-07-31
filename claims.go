@@ -211,7 +211,22 @@ func (c *Claims) PlatformSudo() bool {
 	if c == nil || c.Machine() {
 		return false
 	}
-	return c.Home() == AdminOrg
+	// MEMBERSHIP of the reserved org, at any position — not the home org.
+	//
+	// Home is where an identity is ANCHORED: its billing, its default scope, the
+	// first entry IAM writes. Platform authority is a different question, and the
+	// answer is membership: an operator is someone an existing operator put IN the
+	// reserved org, which is a deliberate, signed, revocable grant.
+	//
+	// Reading only the home org conflated the two and denied every real operator
+	// whose anchor is a brand org — which is every operator who also does ordinary
+	// work. It made the reserved org unreachable in practice while looking correct.
+	for _, m := range c.Orgs {
+		if m.Org == AdminOrg {
+			return true
+		}
+	}
+	return false
 }
 
 // OrgAdmin reports whether these claims administer the named org — admin OF

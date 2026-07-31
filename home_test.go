@@ -58,3 +58,51 @@ func TestPlatformAuthorityIsTheUserOrgNotTheAppOrg(t *testing.T) {
 		t.Errorf("the operator cannot view another tenant: got %q switched=%v", org, switched)
 	}
 }
+
+// PLATFORM AUTHORITY IS MEMBERSHIP OF THE RESERVED ORG, AT ANY POSITION.
+//
+// This is a real production token's claim shape: the operator's identity is
+// ANCHORED in a brand org (orgs[0], where they bill and do ordinary work) and they
+// hold the reserved org as a further membership — a deliberate grant an existing
+// operator made, signed by IAM and revocable by removing the row.
+//
+// Reading only orgs[0] denied them. It made the reserved org unreachable for every
+// operator who also does ordinary work, which is all of them, while looking
+// correct — the anchor and the authority are different questions.
+func TestOperatorAnchoredInABrandOrgStillHoldsPlatformAuthority(t *testing.T) {
+	op := &Claims{
+		Owner:             "hanzo", // the APP they signed in through
+		PreferredUsername: "z",
+		Orgs: []Membership{
+			{Org: "hanzo", Role: Admin},  // the anchor: billing, default scope
+			{Org: AdminOrg, Role: Admin}, // the grant: platform authority
+			{Org: "lux", Role: Admin},
+			{Org: "zoo", Role: Admin},
+		},
+	}
+	op.Subject = "2d4d67ab-uuid"
+
+	if got := op.Home(); got != "hanzo" {
+		t.Errorf("Home() = %q — the anchor is still the brand org, not the reserved one", got)
+	}
+	if !op.PlatformSudo() {
+		t.Fatal("an operator holding the reserved org was denied platform authority")
+	}
+	if org, switched := op.EffectiveOrg("customer"); !switched || org != "customer" {
+		t.Errorf("the operator cannot act in another tenant: %q switched=%v", org, switched)
+	}
+	// The ledger still follows the ANCHOR, so an operator inspecting a customer
+	// spends their own org's money, never the customer's.
+	if payer := op.LedgerOrg("customer"); payer != "hanzo" {
+		t.Errorf("the operator billed %q, want their own anchor org", payer)
+	}
+
+	// And a plain brand user — no reserved membership — holds nothing, whatever the
+	// `owner` claim says.
+	plain := &Claims{Owner: AdminOrg, PreferredUsername: "alice",
+		Orgs: []Membership{{Org: "acme", Role: Member}}}
+	plain.Subject = "uuid-alice"
+	if plain.PlatformSudo() {
+		t.Error("a plain member holds platform authority")
+	}
+}
