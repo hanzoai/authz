@@ -61,7 +61,25 @@ type Claims struct {
 	Scope        string `json:"scope,omitempty"`
 	Organization string `json:"organization,omitempty"`
 	Email        string `json:"email,omitempty"`
-	Name         string `json:"name,omitempty"`
+
+	// EmailVerified is the ISSUER's assertion that the address in Email was
+	// PROVEN — someone held the mailbox and answered. It is not a property of the
+	// string beside it: Email is only ever what a signup form typed, and a
+	// well-formed address nobody owns is the cheapest thing on the internet to
+	// produce.
+	//
+	// ABSENT IS FALSE, and a consumer must read it that way. omitempty means a
+	// token that never proved anything carries no field at all, which is the same
+	// wire shape as every token minted before this claim existed — so the only
+	// safe reading of "missing" is "not verified". Defaulting the other way would
+	// hand every legacy and every unproven token the answer it wants.
+	//
+	// It exists because a bot's address is free and its consequences are not:
+	// consumers gate FUNDING on it (cloud's starter credit), so the question this
+	// field answers is whether a human was ever reachable at all.
+	EmailVerified bool `json:"email_verified,omitempty"`
+
+	Name string `json:"name,omitempty"`
 
 	// Owner is the org of the APPLICATION the token was minted through, NOT the
 	// subject's own. IAM's Sign stamps `Owner: app.Organization` for every
