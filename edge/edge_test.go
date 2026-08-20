@@ -55,7 +55,7 @@ func TestOrgOwnerIsNotAPlatformAdmin(t *testing.T) {
 	}
 }
 
-// An admin-org MACHINE gets neither header: not the platform one (PlatformSudo
+// An admin-org MACHINE gets neither header: not the platform one (Sudo
 // narrows sudo to a human, so the KMS sync identity cannot name a victim org), and
 // not the org-admin one (a client_credentials app is issued for a purpose, not
 // handed an org's self-service surface).

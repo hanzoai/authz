@@ -96,7 +96,7 @@ type Claims struct {
 	//
 	// IT IS NOT PLATFORM AUTHORITY, and reading it as such is a privilege
 	// escalation. Gating the money/admin permission on it let any org owner
-	// satisfy commerce's admin gates — unlimited free balance. Use PlatformSudo
+	// satisfy commerce's admin gates — unlimited free balance. Use Sudo
 	// for platform authority and OrgAdmin for this one; never this field directly.
 	IsAdmin bool `json:"isAdmin,omitempty"`
 
@@ -182,7 +182,7 @@ func (c *Claims) Home() string {
 // "access-token" and "id-token" (internal/oidc/jwt.go), and never "application" —
 // so the check could not fire, and every machine fell through to the audience
 // clause, which only matches one identity in the estate. An admin-org
-// client_credentials token therefore read as a HUMAN and PlatformSudo admitted it:
+// client_credentials token therefore read as a HUMAN and Sudo admitted it:
 // cross-tenant reads plus the platform header the money gates trust. The tests
 // covering it built their machine with the value IAM never mints, so they passed.
 func (c *Claims) Machine() bool {
@@ -192,9 +192,15 @@ func (c *Claims) Machine() bool {
 	return c.App != nil || len(c.Orgs) == 0
 }
 
-// PlatformSudo reports platform authority: a HUMAN whose HOME org is the reserved
-// admin org. It is the only cross-tenant scope — the one predicate every subsystem
-// asks, so platform authority cannot mean two things in two places.
+// Sudo reports platform authority: a HUMAN who is a MEMBER of the reserved admin
+// org, at any position in the signed set. It is the only cross-tenant scope — the
+// one predicate every subsystem asks, so platform authority cannot mean two things
+// in two places.
+//
+// The name is the whole scope. sudo is unqualified by construction — there is one
+// platform and nothing to name it against — which is why this takes no argument
+// where OrgAdmin takes the org it is asking about. The arity is the distinction;
+// spelling it into the name restated what the word already means.
 //
 // The narrowing to a human is load-bearing in both directions. A machine token for
 // admin/<anything> holds NO authority (IAM resolves platform sudo from a live user
@@ -207,7 +213,7 @@ func (c *Claims) Machine() bool {
 // The org is compared VERBATIM, like every other org comparison here: folding case
 // or space would make an org someone can self-serve ("Admin", "admin ") the
 // reserved one, which is the whole escalation in a single strings call.
-func (c *Claims) PlatformSudo() bool {
+func (c *Claims) Sudo() bool {
 	if c == nil || c.Machine() {
 		return false
 	}
@@ -268,7 +274,7 @@ func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 	if selected == "" || selected == home || HasUnsafeRune(selected) {
 		return home, false
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		return selected, true
 	}
 	for _, m := range c.Orgs {
@@ -296,7 +302,7 @@ func (c *Claims) LedgerOrg(selected string) string {
 	if c == nil {
 		return ""
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		return c.Home()
 	}
 	org, _ := c.EffectiveOrg(selected)
@@ -389,7 +395,7 @@ func (c *Claims) Can(v Verb, target Path, grants []Grant) bool {
 	if c == nil {
 		return false
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		return true
 	}
 	subject := c.UserID()

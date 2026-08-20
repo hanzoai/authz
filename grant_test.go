@@ -228,7 +228,7 @@ func TestClaimsGrantsProjectMemberships(t *testing.T) {
 
 // The platform operator acts anywhere, and only as a HUMAN: an admin-org machine
 // identity is not a cross-tenant principal.
-func TestPlatformSudoIsCrossTenantOnlyForHumans(t *testing.T) {
+func TestSudoIsCrossTenantOnlyForHumans(t *testing.T) {
 	// The human carries the home-org membership IAM signs into every user token; the
 	// machine carries none, which is the shape IAM's client_credentials grant mints.
 	human := &Claims{Owner: AdminOrg, PreferredUsername: "z",

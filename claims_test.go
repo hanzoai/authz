@@ -22,7 +22,7 @@ func iamClientCredentials(org string) *Claims {
 }
 
 // A confidential client owned by the reserved admin org must hold NO platform
-// authority. It is the case the doc comment on PlatformSudo names outright: "any
+// authority. It is the case the doc comment on Sudo names outright: "any
 // admin-org client_credentials identity — the KMS sync app, say — could name a
 // victim org and the edge would write it, handing every backend that trusts that
 // header a cross-tenant read."
@@ -35,7 +35,7 @@ func TestAdminOrgMachineHoldsNoPlatformAuthority(t *testing.T) {
 	if !c.Machine() {
 		t.Error("an IAM client_credentials token is not recognized as a machine")
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		t.Error("an admin-org machine holds platform sudo")
 	}
 	// It resolves NO org at all, which is stricter than pinning it to its own: the only
@@ -55,7 +55,7 @@ func TestAdminOrgMachineHoldsNoPlatformAuthority(t *testing.T) {
 // machine, not deny both — IAM mints every USER token with a membership set whose
 // first entry is the home org (store.MemberOrgRefs), so a human in the admin org is
 // distinguishable from an app there by what IAM signed.
-func TestAdminOrgHumanKeepsPlatformSudo(t *testing.T) {
+func TestAdminOrgHumanKeepsSudo(t *testing.T) {
 	c := &Claims{
 		Owner:             AdminOrg,
 		PreferredUsername: "z",
@@ -67,7 +67,7 @@ func TestAdminOrgHumanKeepsPlatformSudo(t *testing.T) {
 	if c.Machine() {
 		t.Fatal("a human platform operator is misread as a machine")
 	}
-	if !c.PlatformSudo() {
+	if !c.Sudo() {
 		t.Fatal("a human platform operator lost platform sudo")
 	}
 	if org, switched := c.EffectiveOrg("acme"); !switched || org != "acme" {
@@ -84,7 +84,7 @@ func TestTenantMachineIsNeitherAdminScope(t *testing.T) {
 	if !c.Machine() {
 		t.Error("a tenant's client_credentials token is not recognized as a machine")
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		t.Error("a tenant machine holds platform sudo")
 	}
 	if c.OrgAdmin("acme") {
@@ -121,7 +121,7 @@ func TestPayingIsNotActing(t *testing.T) {
 	}
 }
 
-// A machine cannot move the ledger. It reads as a machine, so PlatformSudo is
+// A machine cannot move the ledger. It reads as a machine, so Sudo is
 // false, so LedgerOrg takes the ordinary branch and EffectiveOrg has already
 // refused the selection — the two compose to "your own org pays" with no extra rule.
 func TestMachineCannotMoveTheLedger(t *testing.T) {

@@ -179,7 +179,7 @@ func (c *Claims) CanEntity(v Verb, e Entity, env Env) bool {
 	if c == nil {
 		return false
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		return true
 	}
 	if c.App != nil && v == Read {

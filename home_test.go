@@ -28,7 +28,7 @@ func TestPlatformAuthorityIsTheUserOrgNotTheAppOrg(t *testing.T) {
 	if got := c.Home(); got != "acme" {
 		t.Errorf("Home() = %q, want acme — the user's org, not the app's", got)
 	}
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		t.Error("a plain member holds PLATFORM SUDO because she signed in through an admin-org app")
 	}
 	if org, switched := c.EffectiveOrg("victim"); switched || org != "acme" {
@@ -51,7 +51,7 @@ func TestPlatformAuthorityIsTheUserOrgNotTheAppOrg(t *testing.T) {
 	if got := op.Home(); got != AdminOrg {
 		t.Errorf("operator Home() = %q, want %s", got, AdminOrg)
 	}
-	if !op.PlatformSudo() {
+	if !op.Sudo() {
 		t.Error("a real operator lost platform sudo because the APP they used was not the admin org")
 	}
 	if org, switched := op.EffectiveOrg("customer"); !switched || org != "customer" {
@@ -85,7 +85,7 @@ func TestOperatorAnchoredInABrandOrgStillHoldsPlatformAuthority(t *testing.T) {
 	if got := op.Home(); got != "hanzo" {
 		t.Errorf("Home() = %q — the anchor is still the brand org, not the reserved one", got)
 	}
-	if !op.PlatformSudo() {
+	if !op.Sudo() {
 		t.Fatal("an operator holding the reserved org was denied platform authority")
 	}
 	if org, switched := op.EffectiveOrg("customer"); !switched || org != "customer" {
@@ -102,7 +102,7 @@ func TestOperatorAnchoredInABrandOrgStillHoldsPlatformAuthority(t *testing.T) {
 	plain := &Claims{Owner: AdminOrg, PreferredUsername: "alice",
 		Orgs: []Membership{{Org: "acme", Role: Member}}}
 	plain.Subject = "uuid-alice"
-	if plain.PlatformSudo() {
+	if plain.Sudo() {
 		t.Error("a plain member holds platform authority")
 	}
 }

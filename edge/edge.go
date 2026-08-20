@@ -187,7 +187,7 @@ func Render(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 		set(authz.HeaderScopeRole, string(at.Role))
 	}
 
-	if cl.PlatformSudo() {
+	if cl.Sudo() {
 		set(authz.HeaderUserAdmin, "true")
 	}
 	if cl.OrgAdmin(effective) {

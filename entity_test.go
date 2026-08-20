@@ -32,7 +32,7 @@ func TestAppIsNeverAdminNorSudo(t *testing.T) {
 	c.TokenType = "access-token"
 	c.Orgs = []Membership{{Org: AdminOrg, Role: Owner}}
 
-	if c.PlatformSudo() {
+	if c.Sudo() {
 		t.Error("an app principal may act cross-tenant")
 	}
 	if c.OrgAdmin(AdminOrg) {
