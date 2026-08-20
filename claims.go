@@ -15,6 +15,7 @@
 package authz
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -407,6 +408,14 @@ func (c *Claims) Can(v Verb, target Path, grants []Grant) bool {
 // can never shadow a platform signing key by creating a cert with the same name
 // (the JWKS `kid`) under its own org and forging tokens.
 var signingOwners = []string{AdminOrg, "built-in"}
+
+// SigningOwners lists those owners, most trusted first — the order a lookup by
+// `kid` walks, so a name filed under both resolves to the platform's own cert.
+//
+// It returns a COPY. The trust boundary is not a variable a caller can append to:
+// handing out the slice itself would let any consumer widen the set of orgs whose
+// certs verify a token, from anywhere in the process.
+func SigningOwners() []string { return slices.Clone(signingOwners) }
 
 // IsSigningOwner reports whether owner is a reserved platform signing-cert owner —
 // the trust boundary the JWKS and token verification enforce, and the owner-pin a

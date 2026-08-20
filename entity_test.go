@@ -295,3 +295,217 @@ func TestReservedOrgs(t *testing.T) {
 		t.Error("the service org is a signing owner")
 	}
 }
+
+// principal builds a person: their own org, their name in it, and the membership
+// set IAM signs home-org-first.
+func person(org, name string, admin bool, orgs map[string]Role) *Principal {
+	return &Principal{Org: org, User: name, Admin: admin, Orgs: orgs}
+}
+
+// MEMBERSHIP IS THE AUTHORITY ON THE TENANT REGISTRY, not the account's owner half.
+// A person's account lives in ONE org while the orgs they work in are a set, so
+// keying the org row on the home org alone refuses an org's own admin the org they
+// administer — which is what made a second org invisible in every console.
+func TestOrgRowFollowsMembershipNotTheAccountOwner(t *testing.T) {
+	env := allow(nil)
+	org := func(name string) Entity { return Entity{Kind: "organizations", Owner: AdminOrg, Name: name} }
+
+	// alice's account lives in acme; she also runs team-x and merely belongs to lux.
+	alice := person("acme", "alice", false, map[string]Role{"team-x": Admin, "lux": Member})
+
+	for _, tc := range []struct {
+		org        string
+		read, edit bool
+	}{
+		{"acme", true, false},    // home org: belongs, but is not its admin
+		{"team-x", true, true},   // an org she helps run
+		{"lux", true, false},     // an org she merely belongs to
+		{"victim", false, false}, // an org she has nothing to do with
+	} {
+		if got := alice.CanEntity(Read, org(tc.org), env); got != tc.read {
+			t.Errorf("read %s = %v, want %v", tc.org, got, tc.read)
+		}
+		if got := alice.CanEntity(Write, org(tc.org), env); got != tc.edit {
+			t.Errorf("write %s = %v, want %v", tc.org, got, tc.edit)
+		}
+	}
+
+	// An owner membership edits too — IAM assigns `owner` to whoever creates an org,
+	// so a table matching only `admin` refuses every self-serve founder their own.
+	founder := person("acme", "z", false, map[string]Role{"newco": Owner})
+	if !founder.CanEntity(Write, org("newco"), env) {
+		t.Error("the founder of an org cannot edit it")
+	}
+
+	// Membership does not leak past the tenant registry: it admits an ORG ROW and
+	// nothing else under a reserved owner, and no row of another tenant.
+	for _, e := range []Entity{
+		{Kind: "users", Owner: AdminOrg, Name: "root"},
+		{Kind: "certs", Owner: AdminOrg, Name: "cert-hanzo"},
+		{Kind: "users", Owner: "team-x", Name: "bob"},
+	} {
+		if alice.CanEntity(Read, e, env) || alice.CanEntity(Write, e, env) {
+			t.Errorf("membership reached %s %s/%s", e.Kind, e.Owner, e.Name)
+		}
+	}
+}
+
+// THE CREDENTIAL MINTER READS THE KEY SET IT MANAGES. The client already trusted to
+// mint, rotate and revoke a principal's credential also reads it back — strictly
+// less disclosure than the mint it holds, and safe on its own because every key
+// read is masked. Without the mapping the ONE key list is platform-sudo-only, so
+// the surface a person calls to see their own keys has no truthful read at all.
+func TestKeysMapToTheMintCapability(t *testing.T) {
+	if capFor("keys") != CapKeyMint {
+		t.Fatalf("capFor(\"keys\") = %+v, want CapKeyMint", capFor("keys"))
+	}
+	env := allow(map[string]string{"IAM_KEY_MINT_ALLOWED_APPS": "hanzo-console"})
+	keys := Entity{Kind: "keys", Owner: "acme", Name: "k"}
+
+	if !app(AdminOrg, "hanzo-console", "").CanEntity(Read, keys, env) {
+		t.Error("the allow-listed minter cannot read the keys it manages")
+	}
+	if app("acme", "hanzo-console", "").CanEntity(Read, keys, env) {
+		t.Error("a tenant app reusing the allow-listed name read the key set")
+	}
+	if app(AdminOrg, "other-app", "").CanEntity(Read, keys, env) {
+		t.Error("an app that is not allow-listed read the key set")
+	}
+}
+
+// The capability primitives, fail-secure to the letter, and the mapping that says
+// which kind needs which. An unmapped kind denies exactly as an unset allowlist
+// does — that is the live behaviour for every capability a deployment leaves empty.
+func TestCapabilityPrimitives(t *testing.T) {
+	env := allow(map[string]string{"IAM_ORG_ADMIN_APPS": "hanzo-console, brand-console"})
+
+	if !app(AdminOrg, "brand-console", "").Holds(CapOrgAdmin, env) {
+		t.Error("a named, admin-owned app holds nothing") // the list is comma-and-space separated
+	}
+	if app(AdminOrg, "hanzo-consol", "").Holds(CapOrgAdmin, env) {
+		t.Error("a name that merely prefixes a listed one held the capability")
+	}
+	if (&Principal{App: &App{Name: "hanzo-console"}}).Holds(CapOrgAdmin, env) {
+		t.Error("an app with no owning org at all held a capability")
+	}
+	if app(AdminOrg, "hanzo-console", "").Holds(CapKeyMint, env) {
+		t.Error("an unset allowlist admitted an app") // IAM_KEY_MINT_ALLOWED_APPS is absent here
+	}
+	if (&Principal{App: &App{Name: "hanzo", Owner: AdminOrg}}).BoundTo("hanzo") {
+		t.Error("an exact-name app — no agent segment — is bound to nothing")
+	}
+
+	for kind, want := range map[string]Cap{
+		"organizations": CapOrgAdmin,
+		"users":         CapUserAdmin,
+		"keys":          CapKeyMint,
+		"certs":         {},
+		"providers":     {},
+		"":              {},
+	} {
+		if got := capFor(kind); got != want {
+			t.Errorf("capFor(%q) = %+v, want %+v", kind, got, want)
+		}
+	}
+
+	var nobody *Principal
+	if nobody.Holds(CapOrgAdmin, env) || nobody.BoundTo("hanzo") || nobody.CanEntity(Read, Entity{}, env) {
+		t.Error("a nil principal was granted something")
+	}
+}
+
+// The wire and the decision cannot drift: Claims answer the registry question by
+// PROJECTING onto the principal, so there is one calculus and two spellings of the
+// same fact rather than two calculi.
+func TestClaimsProjectOntoTheDecision(t *testing.T) {
+	env := allow(map[string]string{"IAM_ORG_ADMIN_APPS": "hanzo-console"})
+	for _, c := range []*Claims{
+		{Owner: "acme", PreferredUsername: "alice", Orgs: []Membership{{Org: "acme", Role: Member}}},
+		{Owner: "acme", PreferredUsername: "boss", IsAdmin: true, Orgs: []Membership{{Org: "acme", Role: Admin}}},
+		{Owner: AdminOrg, PreferredUsername: "z", Orgs: []Membership{{Org: AdminOrg, Role: Admin}}},
+		app(AdminOrg, "hanzo-console", "cert-hanzo"),
+		nil,
+	} {
+		for _, v := range []Verb{Read, Write} {
+			for _, e := range []Entity{
+				{Kind: "users", Owner: "acme", Name: "alice"},
+				{Kind: "organizations", Owner: AdminOrg, Name: "acme"},
+				{Kind: "certs", Owner: AdminOrg, Name: "cert-hanzo"},
+				{Kind: "applications", Owner: AdminOrg, Name: "hanzo-console"},
+			} {
+				if c.CanEntity(v, e, env) != c.Principal().CanEntity(v, e, env) {
+					t.Fatalf("claims and principal disagree on %s %s %s/%s", v, e.Kind, e.Owner, e.Name)
+				}
+			}
+		}
+		if c.Holds(CapOrgAdmin, env) != c.Principal().Holds(CapOrgAdmin, env) {
+			t.Fatal("claims and principal disagree on a capability")
+		}
+		if c.BoundTo("hanzo") != c.Principal().BoundTo("hanzo") {
+			t.Fatal("claims and principal disagree on the tenant binding")
+		}
+	}
+}
+
+// A NAMELESS APP AUTHORIZES NOTHING. The allowlist is keyed on the application
+// NAME and the self-read clause matches on it, so a name of "" turns both into a
+// comparison against the empty string — and an UNSET allowlist splits to exactly
+// one empty field. Before the guard, such a principal held EVERY capability off
+// EVERY unset allowlist, which is a cross-tenant user write: total compromise from
+// a malformed row rather than from a missing gate.
+//
+// The Application writer rejects an empty name today. That is one validation, in
+// one repo; this is the decision refusing to depend on it.
+func TestNamelessAppAuthorizesNothing(t *testing.T) {
+	nameless := &Principal{App: &App{Name: "", Owner: AdminOrg}, Org: "acme"}
+
+	for _, cap := range []Cap{CapKeyMint, CapUserAdmin, CapOrgAdmin,
+		CapServiceAccountRead, CapKeyResolve, CapPublishableResolve} {
+		// Unset, empty, and a list that happens to carry a blank field: all deny.
+		for name, env := range map[string]Env{
+			"unset": allow(nil),
+			"empty": allow(map[string]string{cap.Env: ""}),
+			"blank": allow(map[string]string{cap.Env: "a,,b"}),
+			"comma": allow(map[string]string{cap.Env: ","}),
+			"space": allow(map[string]string{cap.Env: " , "}),
+		} {
+			if nameless.Holds(cap, env) {
+				t.Errorf("a nameless app held %s off a %s allowlist", cap.Name, name)
+			}
+		}
+	}
+
+	env := allow(map[string]string{
+		"IAM_USER_ADMIN_APPS": "hanzo-console", "IAM_ORG_ADMIN_APPS": "hanzo-console",
+	})
+	for _, e := range []Entity{
+		{Kind: "users", Owner: "victim", Name: "x"},
+		{Kind: "users", Owner: "acme", Name: "alice"},
+		{Kind: "organizations", Owner: AdminOrg, Name: "victim"},
+		{Kind: "applications", Owner: AdminOrg, Name: ""},
+		{Kind: "applications", Owner: "acme", Name: ""},
+		{Kind: "certs", Owner: AdminOrg, Name: ""},
+		{Kind: "keys", Owner: "acme", Name: ""},
+		{Kind: "projects", Owner: "acme", Name: ""},
+	} {
+		for _, v := range []Verb{Read, Write} {
+			if nameless.CanEntity(v, e, env) {
+				t.Errorf("a nameless app was authorized %s on %s %s/%s", v, e.Kind, e.Owner, e.Name)
+			}
+		}
+	}
+
+	// A named app is unaffected: the guard rejects the malformed input and nothing
+	// else. And an empty field in an OTHERWISE VALID list does not admit it either.
+	console := app(AdminOrg, "hanzo-console", "")
+	if !console.Holds(CapOrgAdmin, allow(map[string]string{"IAM_ORG_ADMIN_APPS": "hanzo-console,,other"})) {
+		t.Error("a listed app lost its capability because the list carried a blank field")
+	}
+	if !console.CanEntity(Write, Entity{Kind: "organizations", Owner: AdminOrg, Name: "acme"}, env) {
+		t.Error("the guard revoked a legitimate capability")
+	}
+	// A person is still vacuous, and still decided by the org policy.
+	if !(&Principal{Org: "acme", User: "alice"}).Holds(CapKeyMint, allow(nil)) {
+		t.Error("a person was refused by the app capability gate")
+	}
+}
