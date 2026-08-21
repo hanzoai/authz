@@ -1,4 +1,12 @@
-// Package serve is the network surface over the decision, and nothing else.
+// Package serve is the access decision behind an org-scoped call: who may do
+// what, where, answered allow or deny.
+//
+// That opening sentence is what hanzoai/cloud publishes as the description of
+// /v1/authz — it reads this comment rather than keeping a second copy of it — so
+// the sentence is addressed to a reader of the API reference, and the rest of
+// this file to whoever edits it.
+//
+// It is the network surface over the decision, and nothing else.
 //
 // It is a SEPARATE package because the decision leaf must stay pure: a caller
 // importing github.com/hanzoai/authz links no HTTP stack, no driver, no socket, so
