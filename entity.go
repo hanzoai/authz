@@ -354,6 +354,23 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 	if p.App != nil {
 		return p.Holds(capFor(e.Kind), env)
 	}
+	// A person READS the projects and workspaces of every org they belong to.
+	//
+	// The tenant rule below admits a non-admin person exactly ONE entity — their own
+	// user row — so without this a plain member cannot list the projects of their own
+	// org, never mind a second one. Belonging is the authority here, and belonging is
+	// a SET: an account lives in one tenant while the orgs someone works in are many,
+	// so keying the read on the home org would also empty the console's switcher for
+	// every member of an org they do not live in.
+	//
+	// Read only, and only these two kinds. A project is created, renamed and deleted
+	// by the org's admin, whom p.Admin admits below; widening the verb would let
+	// anyone ever added to an org delete its projects. Widening the kinds would reach
+	// users, certs and applications, which belonging does not entitle you to see.
+	// memberOf refuses an empty owner, so an unscoped read cannot slip through.
+	if v == Read && (e.Kind == "projects" || e.Kind == "workspaces") && p.memberOf(e.Owner) {
+		return true
+	}
 	if e.Owner == "" || e.Owner != p.Org {
 		return false
 	}
