@@ -159,3 +159,56 @@ func TestLocationStopsAtTheFirstGap(t *testing.T) {
 		})
 	}
 }
+
+// A PROGRAM SAYS SO, AND A MEMBERSHIP SET DOES NOT UNSAY IT.
+//
+// Machine's older reading was len(Orgs)==0 alone, so a program that carried any
+// membership read as a person — and a person in the reserved org is an operator.
+// The claim IAM signs settles it in the safe direction whatever the set holds.
+func TestAProgramInTheAdminOrgIsNeverAnOperator(t *testing.T) {
+	program := &Claims{
+		Owner:     AdminOrg,
+		TokenType: "access-token",
+		Type:      Program,
+		Orgs:      []Membership{{Org: AdminOrg, Role: Admin}},
+	}
+	if !program.Program() {
+		t.Fatal("IAM signed type=application and the claim did not survive the decode")
+	}
+	if !program.Machine() {
+		t.Fatal("a program carrying a membership read as a person — the set must not outvote the signed claim")
+	}
+	if program.Sudo() {
+		t.Fatal("a client_credentials token in the reserved org held platform authority")
+	}
+
+	person := &Claims{
+		Owner:             AdminOrg,
+		PreferredUsername: "z",
+		TokenType:         "access-token",
+		Orgs:              []Membership{{Org: AdminOrg, Role: Admin}},
+	}
+	if person.Program() {
+		t.Fatal("a person's token claimed to be a program; IAM leaves type empty for people")
+	}
+	if person.Machine() {
+		t.Fatal("an operator read as a machine")
+	}
+	if !person.Sudo() {
+		t.Fatal("precondition: a member of the reserved org is the operator this test contrasts against")
+	}
+}
+
+// The claim is `type`. An earlier predicate read `tokenType`, which IAM assigns
+// only "access-token" and "id-token", so it could never fire.
+func TestTokenTypeIsNotTheKindOfSubject(t *testing.T) {
+	for _, tt := range []string{"access-token", "id-token"} {
+		c := &Claims{TokenType: tt, Orgs: []Membership{{Org: "acme", Role: Admin}}}
+		if c.Program() {
+			t.Fatalf("tokenType=%q was read as the subject kind", tt)
+		}
+	}
+	if (&Claims{TokenType: Program}).Program() {
+		t.Fatal("the predicate read tokenType instead of type — the exact bug this replaces")
+	}
+}

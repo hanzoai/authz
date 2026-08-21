@@ -118,9 +118,22 @@ type Claims struct {
 	Workspace string `json:"workspace,omitempty"`
 	Project   string `json:"project,omitempty"`
 
-	Nonce     string `json:"nonce,omitempty"`
-	Azp       string `json:"azp,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
+	Azp   string `json:"azp,omitempty"`
+
+	// TokenType is "access-token" or "id-token" and NOTHING else. It says which
+	// of the two a token is, never what kind of subject holds it — see Type.
 	TokenType string `json:"tokenType,omitempty"`
+
+	// Type is IAM saying, in a signed claim, that the subject is a PROGRAM.
+	// `clientCredentialsGrant` is the only place that stamps it (iam
+	// internal/oidc/token.go), and a person's identity leaves it empty, so
+	// Program is a positive proof where len(Orgs)==0 is only an absence.
+	//
+	// Read the value from Program below rather than spelling it: this claim is
+	// `type`, not `tokenType`, and the two are one letter apart in prose and a
+	// whole security property apart in effect.
+	Type string `json:"type,omitempty"`
 
 	// App is the confidential client the request authenticated as, or nil for a
 	// human. IAM resolves it from its own application row and sets it after
@@ -190,7 +203,31 @@ func (c *Claims) Machine() bool {
 	if c == nil {
 		return false
 	}
-	return c.App != nil || len(c.Orgs) == 0
+	return c.App != nil || c.Program() || len(c.Orgs) == 0
+}
+
+// Program is the value IAM signs into [Claims.Type] for a client_credentials
+// token, and the one this package compares against.
+const Program = "application"
+
+// Program reports that IAM SAID this subject is a program, rather than this
+// package inferring it from what the token lacks.
+//
+// The difference matters where the answer grants something. A consumer asking
+// Machine gets the conservative union — anything that looks like a program is
+// treated as one, so a membership set that failed to resolve loses authority
+// rather than gaining it. A consumer handing out reach should ask this instead
+// and refuse what cannot prove itself, because "no memberships" is a shape a
+// human token can take on a bad day and a shape an attacker can aim for.
+//
+// The claim is `type`. An earlier attempt at this predicate read `tokenType`,
+// which IAM assigns only "access-token" and "id-token" — so it never fired,
+// every machine fell through, and the tests passed because they built their
+// fixture with the value IAM never mints. Verified against the issuer, not a
+// fixture: iam pkg/schema/user.go declares the constant, internal/oidc/jwt.go
+// declares the claim, and internal/oidc/token.go sets it in exactly one place.
+func (c *Claims) Program() bool {
+	return c != nil && c.Type == Program
 }
 
 // Sudo reports platform authority: a HUMAN who is a MEMBER of the reserved admin
