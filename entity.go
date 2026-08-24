@@ -42,9 +42,11 @@ type Cap struct {
 var (
 	// CapKeyMint gates minting, rotating, or revoking a credential on another
 	// principal's behalf — the service-account administration boundary, since a
-	// minted key is an org-billing credential. It also covers READING the key set it
-	// administers, a strictly smaller disclosure than the mint it is already trusted
-	// with and safe on its own because every key read is masked.
+	// minted key is an org-billing credential. Minting reaches across tenants; the
+	// read it also grants does not. It lists the key set it administers WITHIN THE
+	// TENANT THE APP SERVES — the list handler pins that tenant — but a NAMED key of
+	// another tenant is not readable through it: writing a credential into a tenant
+	// is not licence to read that tenant's rows back. Every key read is masked.
 	CapKeyMint = Cap{Name: "key-mint", Env: "IAM_KEY_MINT_ALLOWED_APPS"}
 
 	// CapUserAdmin gates cross-user account mutation (owner, isAdmin, email, type,
@@ -97,7 +99,8 @@ type Env func(name string) string
 // deny-all by design, because no client credential should ever reach signing
 // material. Only the kinds a live confidential client touches are mapped: the brand
 // consoles create customer orgs, cloud moves the onboarding user into the org it
-// just created, and the credential administrator reads back the key set it mints.
+// just created, and the credential administrator lists the key set it mints within
+// the tenant it serves.
 func capFor(kind string) Cap {
 	switch kind {
 	case "organizations":
@@ -351,7 +354,19 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 	// A confidential client's authority is its capability allowlist and nothing else
 	// — never platform sudo, never org admin; an unmapped kind or unset allowlist
 	// denies.
+	//
+	// A capability is a WRITE authority that reaches across tenants — minting a key
+	// on another principal's behalf, moving an onboarding user into the org just
+	// created for it. It does NOT grant reading a NAMED row of another tenant: a mint
+	// capability writes a key, it does not read another tenant's. So a named read is
+	// pinned to the tenant the app SERVES, while a write is not. A read that names no
+	// row (e.Name == "") is a collection, whose tenant the list handler decides from
+	// the same served org (principal.Scope) — the pin belongs on the row, not the
+	// list, so this admits the collection and pins the item.
 	if p.App != nil {
+		if v == Read && e.Name != "" && e.Owner != p.Org {
+			return false
+		}
 		return p.Holds(capFor(e.Kind), env)
 	}
 	// A person READS the projects and workspaces of every org they belong to.

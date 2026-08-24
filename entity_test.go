@@ -360,16 +360,90 @@ func TestKeysMapToTheMintCapability(t *testing.T) {
 		t.Fatalf("capFor(\"keys\") = %+v, want CapKeyMint", capFor("keys"))
 	}
 	env := allow(map[string]string{"IAM_KEY_MINT_ALLOWED_APPS": "hanzo-console"})
-	keys := Entity{Kind: "keys", Owner: "acme", Name: "k"}
 
-	if !app(AdminOrg, "hanzo-console", "").CanEntity(Read, keys, env) {
-		t.Error("the allow-listed minter cannot read the keys it manages")
+	// The credential administrator: an admin-owned, allow-listed console serving one
+	// tenant ("hanzo"). Its row owner is the reserved signing owner (the pin); the
+	// org it serves is where its reads land.
+	console := app(AdminOrg, "hanzo-console", "")
+	console.Owner = "hanzo"
+
+	// MINT REACHES ANOTHER TENANT. Writing a credential on another principal's behalf
+	// is the whole point of the capability.
+	if !console.CanEntity(Write, Entity{Kind: "keys", Owner: "acme", Name: "k"}, env) {
+		t.Error("the allow-listed minter cannot mint a key in the tenant it provisions")
 	}
-	if app("acme", "hanzo-console", "").CanEntity(Read, keys, env) {
-		t.Error("a tenant app reusing the allow-listed name read the key set")
+	// READING A NAMED ROW DOES NOT. A mint capability writes a key; it does not read
+	// another tenant's back. This is the cross-tenant item read the finding proved
+	// live (hanzo-console GET /v1/iam/keys/lux/lux-secret-key -> 200).
+	if console.CanEntity(Read, Entity{Kind: "keys", Owner: "acme", Name: "k"}, env) {
+		t.Error("the minter read a NAMED key of a tenant it does not serve")
 	}
-	if app(AdminOrg, "other-app", "").CanEntity(Read, keys, env) {
+	// Its OWN served tenant's named key it does read — the surface a person calls to
+	// see one of their keys, masked.
+	if !console.CanEntity(Read, Entity{Kind: "keys", Owner: "hanzo", Name: "k"}, env) {
+		t.Error("the minter cannot read a named key of the tenant it serves")
+	}
+	// A COLLECTION read (no name) is admitted here; the list handler pins the tenant
+	// from the same served org, so a foreign owner is refused there, not here.
+	if !console.CanEntity(Read, Entity{Kind: "keys", Owner: "acme"}, env) {
+		t.Error("the minter was refused a key collection at the policy — the list handler pins it")
+	}
+	// An empty owner is not a row: a named read with no owner is refused, and can
+	// never bind another tenant's key.
+	if console.CanEntity(Read, Entity{Kind: "keys", Owner: "", Name: "k"}, env) {
+		t.Error("the minter read a named key with no owner")
+	}
+
+	// The owner-pin still holds either side of the tenant pin: a tenant app reusing
+	// the allow-listed NAME, and an unlisted app, each hold nothing.
+	spoof := app("acme", "hanzo-console", "")
+	spoof.Owner = "acme"
+	if spoof.CanEntity(Read, Entity{Kind: "keys", Owner: "acme", Name: "k"}, env) {
+		t.Error("a tenant app reusing the allow-listed name read its own key set through the cap")
+	}
+	other := app(AdminOrg, "other-app", "")
+	other.Owner = "hanzo"
+	if other.CanEntity(Read, Entity{Kind: "keys", Owner: "hanzo", Name: "k"}, env) {
 		t.Error("an app that is not allow-listed read the key set")
+	}
+}
+
+// A CAPABILITY WRITES ACROSS TENANTS; ITS NAMED READ STAYS IN THE ONE IT SERVES.
+// Minting a key or moving an onboarding user reaches another tenant by design — that
+// is provisioning. Reading a NAMED row of another tenant does not follow from it: a
+// mint capability grants writing a key, not reading another tenant's back. Proven
+// live against both kinds (keys/lux/lux-secret-key and users/lux/lux-alice -> 200).
+func TestCapabilityNamedReadIsPinnedToTheServedTenant(t *testing.T) {
+	env := allow(map[string]string{
+		"IAM_KEY_MINT_ALLOWED_APPS": "hanzo-console",
+		"IAM_USER_ADMIN_APPS":       "hanzo-console",
+	})
+	// The console's row is admin-owned (the pin); it serves the tenant "hanzo".
+	console := app(AdminOrg, "hanzo-console", "")
+	console.Owner = "hanzo"
+
+	for _, kind := range []string{"keys", "users"} {
+		// The provisioning write reaches the tenant it serves for.
+		if !console.CanEntity(Write, Entity{Kind: kind, Owner: "lux", Name: "x"}, env) {
+			t.Errorf("%s: the console cannot provision cross-tenant, which is the capability's purpose", kind)
+		}
+		// The cross-tenant NAMED read is severed.
+		if console.CanEntity(Read, Entity{Kind: kind, Owner: "lux", Name: "x"}, env) {
+			t.Errorf("%s: the console read a NAMED row of a tenant it does not serve", kind)
+		}
+		// Its own served tenant's named row it reads.
+		if !console.CanEntity(Read, Entity{Kind: kind, Owner: "hanzo", Name: "x"}, env) {
+			t.Errorf("%s: the console cannot read a named row of the tenant it serves", kind)
+		}
+		// A named read with no owner binds no row and is refused — the empty target a
+		// call plane computes when nothing binds the URL cannot reach another tenant.
+		if console.CanEntity(Read, Entity{Kind: kind, Owner: "", Name: "x"}, env) {
+			t.Errorf("%s: an empty-owner named read was admitted", kind)
+		}
+		// The collection read (no name) is admitted; its list handler pins the tenant.
+		if !console.CanEntity(Read, Entity{Kind: kind, Owner: "hanzo"}, env) {
+			t.Errorf("%s: the console was refused a collection read the list handler pins", kind)
+		}
 	}
 }
 
