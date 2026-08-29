@@ -33,7 +33,7 @@ import (
 // here, because the grant SET belongs to IAM — IAM signs it, so IAM owns it, and a
 // second writable copy behind this surface would be a second source of truth for
 // who may do what.
-func Mount(app *zip.App, logger luxlog.Logger) error {
+func Use(app *zip.App, logger luxlog.Logger) error {
 	logger = logger.New("subsystem", "authz")
 
 	app.Get("/v1/authz/health", func(c *zip.Ctx) error {
