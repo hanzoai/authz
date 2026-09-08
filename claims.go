@@ -100,7 +100,7 @@ type Claims struct {
 	// `<owner>/<name>`, e.g. "z" — not a display name. A consumer addressing a
 	// wallet needs it: cloud's money path addresses `<org>/<username>`, and with
 	// no username claim it fell back to `name` (a DisplayName) and addressed
-	// `hanzo/Zach Kelling`, a wallet no funding path can name, while the balance
+	// `hanzo/Grace Hopper`, a wallet no funding path can name, while the balance
 	// sat in `hanzo/z`. Every signed-in completion then 402'd on a funded account.
 	PreferredUsername string `json:"preferred_username,omitempty"`
 
