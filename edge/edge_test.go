@@ -290,3 +290,59 @@ func TestEveryWrittenNameIsStripped(t *testing.T) {
 		}
 	}
 }
+
+// The verified-email assertion must survive the edge, and only when it was made.
+//
+// Strip iterates authz.Headers, so adding the header there makes the gateway
+// remove any client copy — necessary, and on its own enough to break the feature:
+// a header that is stripped and never re-stamped reads as "not verified" for every
+// gateway-routed caller. That failure is fail-closed, which is why it is silent —
+// nothing errors, money just stops. This pins both directions.
+func TestRenderCarriesEmailVerifiedOnlyWhenAsserted(t *testing.T) {
+	find := func(ms []edge.Header, name string) (string, bool) {
+		for _, m := range ms {
+			if m.Name == name {
+				return m.Value, true
+			}
+		}
+		return "", false
+	}
+
+	base := func() *authz.Claims {
+		cl := &authz.Claims{
+			Owner: "acme", PreferredUsername: "alice", Email: "alice@acme.example",
+			Orgs: []authz.Membership{{Org: "acme", Role: authz.Admin}},
+		}
+		cl.Subject = "uuid-alice"
+		return cl
+	}
+
+	t.Run("asserted", func(t *testing.T) {
+		cl := base()
+		cl.EmailVerified = true
+		v, ok := find(edge.Render(cl, "", nil), authz.HeaderUserEmailVerified)
+		if !ok {
+			t.Fatal("a verified claim must be re-stamped past the edge, or the gateway path can never be funded")
+		}
+		if v != "true" {
+			t.Errorf("value = %q, want \"true\"", v)
+		}
+	})
+
+	t.Run("not asserted", func(t *testing.T) {
+		if _, ok := find(edge.Render(base(), "", nil), authz.HeaderUserEmailVerified); ok {
+			t.Error("an unverified claim must emit nothing; absence is what means unverified")
+		}
+	})
+
+	// The header must also be in the strip set, or a client could forge the one
+	// value that unlocks a grant.
+	t.Run("stripped on ingress", func(t *testing.T) {
+		for _, h := range authz.Headers {
+			if h == authz.HeaderUserEmailVerified {
+				return
+			}
+		}
+		t.Fatal("HeaderUserEmailVerified is not in authz.Headers — ingress would not strip a forged copy")
+	})
+}

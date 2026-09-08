@@ -29,6 +29,18 @@ const (
 	HeaderBillingAccount = "X-Billing-Account-Id"
 	HeaderRequestID      = "X-Request-Id"
 
+	// HeaderUserEmailVerified restates [Claims.EmailVerified]: the issuer proved the
+	// address, not merely received it. It is written ONLY for the true case, so the
+	// value is always exactly "true" and ABSENCE IS THE NEGATIVE — the same wire
+	// shape a token minted before the claim existed produces, and the same one an
+	// unverified signup produces. A reader that treats missing as anything but false
+	// re-opens the hole for every legacy token at once.
+	//
+	// One value, never a general boolean: there is no "false" spelling to get wrong,
+	// no parse to disagree about, and a stripped header is indistinguishable from an
+	// unverified one — which is the correct outcome for both.
+	HeaderUserEmailVerified = "X-User-Email-Verified"
+
 	// HeaderScope carries the resolved LOCATION a request acts at, printed as a path
 	// (acme/prod/web), and HeaderScopeRole the role held there. This pair is why a
 	// token stays constant-size: the edge resolves the requested scope against the
@@ -66,7 +78,7 @@ const (
 var Headers = []string{
 	HeaderOrg, HeaderWorkspace, HeaderProject,
 	HeaderScope, HeaderScopeRole,
-	HeaderUser, HeaderUserName, HeaderUserEmail, HeaderUserOwner,
+	HeaderUser, HeaderUserName, HeaderUserEmail, HeaderUserEmailVerified, HeaderUserOwner,
 	HeaderUserAdmin, HeaderUserOrgAdmin, HeaderUserPermissions,
 	HeaderBillingAccount, HeaderApp,
 }

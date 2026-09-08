@@ -177,6 +177,14 @@ func Render(cl *authz.Claims, selected string, at *authz.Grant) []Header {
 	set(authz.HeaderUser, cl.UserID())
 	set(authz.HeaderUserName, cl.Username())
 	set(authz.HeaderUserEmail, cl.Email)
+	// Rendered ONLY when the issuer asserted it, so absence keeps meaning "not
+	// verified" on this side of the edge exactly as it does in the token. Stripping
+	// the header without re-stamping it (Strip iterates authz.Headers, which now
+	// includes this one) would make every gateway-routed caller read as unverified —
+	// fail-closed, and therefore silent: nothing breaks, money simply stops.
+	if cl.EmailVerified {
+		set(authz.HeaderUserEmailVerified, "true")
+	}
 	set(authz.HeaderBillingAccount, cl.BillingAccount)
 
 	// The resolved LOCATION travels, not the grant set: the edge resolves once and
