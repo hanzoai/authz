@@ -476,12 +476,7 @@ func SigningOwners() []string { return slices.Clone(signingOwners) }
 // the trust boundary the JWKS and token verification enforce, and the owner-pin a
 // capability is granted under.
 func IsSigningOwner(owner string) bool {
-	for _, o := range signingOwners {
-		if o == owner {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(signingOwners, owner)
 }
 
 // serviceOrg is the system organization that owns service/app principals —

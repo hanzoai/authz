@@ -217,7 +217,7 @@ func (p *Principal) Holds(cap Cap, env Env) bool {
 	if cap.Env == "" || env == nil {
 		return false
 	}
-	for _, item := range strings.Split(env(cap.Env), ",") {
+	for item := range strings.SplitSeq(env(cap.Env), ",") {
 		// An EMPTY entry names no app. Splitting "" yields one empty field and
 		// splitting "a,,b" yields another, so without this an app whose name compared
 		// equal to "" held every capability off an UNSET allowlist — the failure

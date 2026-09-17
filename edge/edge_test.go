@@ -2,6 +2,7 @@ package edge_test
 
 import (
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/hanzoai/authz"
@@ -338,10 +339,8 @@ func TestRenderCarriesEmailVerifiedOnlyWhenAsserted(t *testing.T) {
 	// The header must also be in the strip set, or a client could forge the one
 	// value that unlocks a grant.
 	t.Run("stripped on ingress", func(t *testing.T) {
-		for _, h := range authz.Headers {
-			if h == authz.HeaderUserEmailVerified {
-				return
-			}
+		if slices.Contains(authz.Headers, authz.HeaderUserEmailVerified) {
+			return
 		}
 		t.Fatal("HeaderUserEmailVerified is not in authz.Headers — ingress would not strip a forged copy")
 	})

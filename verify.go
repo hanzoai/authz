@@ -11,6 +11,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -106,10 +107,8 @@ func Verify(token string, keys Keys, issuers []string) (*Claims, error) {
 	// The issuer is checked HERE rather than through jwt.WithIssuer because that
 	// option takes ONE value. Checking it after the signature holds is the same order
 	// the library uses; an unverified `iss` is not evidence of anything either way.
-	for _, want := range issuers {
-		if c.Issuer == want {
-			return &c, nil
-		}
+	if slices.Contains(issuers, c.Issuer) {
+		return &c, nil
 	}
 	return nil, fmt.Errorf("authz: issuer %q is not trusted", c.Issuer)
 }

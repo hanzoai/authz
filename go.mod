@@ -1,6 +1,6 @@
 module github.com/hanzoai/authz
 
-go 1.26.8
+go 1.27.1
 
 // The decision leaf (package authz) requires golang-jwt/v5 alone — the library IAM
 // signs with, and itself a pure-stdlib module. The serve package, which is the

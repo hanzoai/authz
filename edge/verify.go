@@ -6,6 +6,7 @@ package edge
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/hanzoai/authz"
@@ -84,12 +85,10 @@ func (v *Verifier) VerifyRaw(raw string) (*authz.Claims, error) {
 		return claims, nil
 	}
 	for _, aud := range claims.Audience {
-		for _, want := range v.audiences {
-			// VERBATIM, like every identifier comparison in authz: folding case would
-			// make two separately registered client ids one.
-			if aud == want {
-				return claims, nil
-			}
+		// VERBATIM, like every identifier comparison in authz: folding case would
+		// make two separately registered client ids one.
+		if slices.Contains(v.audiences, aud) {
+			return claims, nil
 		}
 	}
 	return nil, fmt.Errorf("edge: audience %v is not accepted here", []string(claims.Audience))
