@@ -36,10 +36,10 @@ import (
 func Use(app *zip.App, logger luxlog.Logger) error {
 	logger = logger.New("subsystem", "authz")
 
-	app.Get("/v1/authz/health", func(c *zip.Ctx) error {
+	app.Raw(http.MethodGet, "/v1/authz/health", func(c *zip.Ctx) error {
 		return c.JSON(http.StatusOK, map[string]any{"status": "ok", "service": "authz"})
 	})
-	app.Get("/v1/authz/readyz", func(c *zip.Ctx) error {
+	app.Raw(http.MethodGet, "/v1/authz/readyz", func(c *zip.Ctx) error {
 		return c.JSON(http.StatusOK, map[string]any{"status": "ready", "service": "authz"})
 	})
 
@@ -49,7 +49,7 @@ func Use(app *zip.App, logger luxlog.Logger) error {
 	// so one tenant can never have a decision made for it in another tenant's request.
 	// An unauthenticated request carries no org and is refused rather than decided
 	// against an empty scope.
-	app.Post("/v1/authz/check", func(c *zip.Ctx) error {
+	app.Raw(http.MethodPost, "/v1/authz/check", func(c *zip.Ctx) error {
 		org := c.Org()
 		if org == "" || authz.HasUnsafeRune(org) {
 			return zip.ErrUnauthorized("missing X-Org-Id")
