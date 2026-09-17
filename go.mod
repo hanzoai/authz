@@ -8,7 +8,7 @@ go 1.27.1
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/luxfi/log v1.5.0
-	github.com/zap-proto/zip v1.37.1
+	github.com/zap-proto/zip v1.37.3
 )
 
 require (
