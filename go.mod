@@ -8,7 +8,7 @@ go 1.27.1
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/luxfi/log v1.5.0
-	github.com/zap-proto/zip v1.34.2
+	github.com/zap-proto/zip v1.36.51
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.70.0 // indirect
 	github.com/zap-proto/fiber/v3 v3.2.1 // indirect
-	github.com/zap-proto/go v1.3.0 // indirect
+	github.com/zap-proto/go v1.8.3 // indirect
 	github.com/zap-proto/http v0.3.5 // indirect
 	github.com/zap-proto/mcp v1.0.5 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
