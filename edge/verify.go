@@ -63,6 +63,16 @@ func (v *Verifier) Verify(h Headers) (*authz.Claims, error) {
 	return v.VerifyRaw(Token(h))
 }
 
+// VerifyHeld is VerifyRaw against the keys already held ([Keys.Held]), with no
+// I/O: the same rule, the same issuers and audiences, and no fetch. A token signed
+// under a key not yet held fails here and verifies later through VerifyRaw.
+func (v *Verifier) VerifyHeld(raw string) (*authz.Claims, error) {
+	if v == nil {
+		return nil, errors.New("edge: no verifier")
+	}
+	return v.verify(raw, v.keys.Held)
+}
+
 // VerifyRaw verifies a credential held out of band, such as the token an OAuth2
 // code-exchange handler has just received.
 //
@@ -74,10 +84,15 @@ func (v *Verifier) VerifyRaw(raw string) (*authz.Claims, error) {
 	if v == nil {
 		return nil, errors.New("edge: no verifier")
 	}
+	return v.verify(raw, v.keys.Resolve)
+}
+
+// verify is the one check both readers share; only where the keys come from differs.
+func (v *Verifier) verify(raw string, keys authz.Keys) (*authz.Claims, error) {
 	if raw == "" {
 		return nil, ErrNoToken
 	}
-	claims, err := authz.Verify(raw, v.keys.Resolve, v.issuers)
+	claims, err := authz.Verify(raw, keys, v.issuers)
 	if err != nil {
 		return nil, err
 	}

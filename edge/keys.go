@@ -168,6 +168,20 @@ func (k *Keys) Resolve(kid string) []crypto.PublicKey {
 	return k.byKid[kid]
 }
 
+// Held returns the keys published under kid from the set already fetched, stale
+// or not, and never fetches. It is the reader for a path that must not wait on the
+// publisher — a rate limit deciding who a caller is before anything else runs. A
+// key it does not hold yet is simply not there: the caller verifies nothing and
+// falls back, and the next Resolve fetches.
+func (k *Keys) Held(kid string) []crypto.PublicKey {
+	if k == nil || kid == "" {
+		return nil
+	}
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return k.byKid[kid]
+}
+
 // fetch reads the published set and indexes it by kid. A key with no kid is
 // skipped: it can never be named by a token, so keeping it would only widen what
 // an untargeted lookup could reach.

@@ -306,3 +306,56 @@ func TestIssuerAllowlistAdmitsEveryBrandAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// VerifyHeld answers from the keys already held and never reaches the publisher:
+// nothing held is no verification, a held key verifies even past its TTL, and the
+// rule is the same one VerifyRaw applies.
+func TestVerifyHeldNeverFetches(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, hits := serveJWKS(t, map[string]any{"keys": []map[string]any{{
+		"kty": "RSA", "kid": "cert-hanzo", "use": "sig",
+		"n": b64u(priv.N.Bytes()), "e": b64u(big.NewInt(int64(priv.E)).Bytes()),
+	}}})
+	sign := func(iss string) string {
+		t.Helper()
+		claims := &authz.Claims{Owner: "acme"}
+		claims.Issuer = iss
+		claims.Subject = "uuid-alice"
+		claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour))
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		tok.Header["kid"] = "cert-hanzo"
+		s, err := tok.SignedString(priv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	good := sign("https://hanzo.id")
+	v := edge.NewVerifier(url, []string{"https://hanzo.id"}, nil, time.Nanosecond)
+
+	if _, err := v.VerifyHeld(good); err == nil {
+		t.Fatal("verified with no key held")
+	}
+	if *hits != 0 {
+		t.Fatalf("VerifyHeld fetched the JWKS %d times, want 0", *hits)
+	}
+	if _, err := v.VerifyRaw(good); err != nil {
+		t.Fatalf("VerifyRaw: %v", err)
+	}
+	fetched := *hits
+	for range 3 {
+		got, err := v.VerifyHeld(good) // the held set is past its 1ns TTL
+		if err != nil || got.Subject != "uuid-alice" {
+			t.Fatalf("VerifyHeld with the key held: %v, %v", got, err)
+		}
+	}
+	if *hits != fetched {
+		t.Fatalf("VerifyHeld fetched: %d fetches after, %d before", *hits, fetched)
+	}
+	if _, err := v.VerifyHeld(sign("https://evil.example")); err == nil {
+		t.Fatal("VerifyHeld admitted an issuer outside the allowlist")
+	}
+}
