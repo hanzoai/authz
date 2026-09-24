@@ -337,16 +337,53 @@ func TestOrgRowFollowsMembershipNotTheAccountOwner(t *testing.T) {
 		t.Error("the founder of an org cannot edit it")
 	}
 
-	// Membership does not leak past the tenant registry: it admits an ORG ROW and
-	// nothing else under a reserved owner, and no row of another tenant.
+	// Membership reaches no platform row: under a reserved owner it admits an ORG
+	// ROW and nothing else, and belonging alone admits no row of that tenant.
 	for _, e := range []Entity{
 		{Kind: "users", Owner: AdminOrg, Name: "root"},
 		{Kind: "certs", Owner: AdminOrg, Name: "cert-hanzo"},
-		{Kind: "users", Owner: "team-x", Name: "bob"},
+		{Kind: "users", Owner: "lux", Name: "bob"},
+		{Kind: "invitations", Owner: "lux", Name: ""},
+		{Kind: "users", Owner: "victim", Name: "bob"},
 	} {
 		if alice.CanEntity(Read, e, env) || alice.CanEntity(Write, e, env) {
 			t.Errorf("membership reached %s %s/%s", e.Kind, e.Owner, e.Name)
 		}
+	}
+}
+
+// AN ADMIN BY MEMBERSHIP IS THE ORG'S ADMIN. The founder of an org who joined it
+// from a personal account runs it exactly as an admin whose account lives there:
+// its roster, its invitations, its people. Asking only the home org's flag made
+// them a stranger to it.
+func TestAnAdminByMembershipRunsTheOrgsRows(t *testing.T) {
+	env := allow(nil)
+	josh := person("josh", "josh", true, map[string]Role{"webby": Owner, "lux": Member})
+	home := person("webby", "dana", true, nil)
+
+	for _, e := range []Entity{
+		{Kind: "invitations", Owner: "webby"},
+		{Kind: "users", Owner: "webby", Name: "deploy"},
+		{Kind: "applications", Owner: "webby", Name: "webby-patrol"},
+	} {
+		for _, v := range []Verb{Read, Write} {
+			if got, want := josh.CanEntity(v, e, env), home.CanEntity(v, e, env); !got || got != want {
+				t.Errorf("%v %s %s/%s: by membership %v, by home %v", v, e.Kind, e.Owner, e.Name, got, want)
+			}
+		}
+	}
+	// A plain member of lux is not its admin, and a home admin of webby is not lux's.
+	for _, p := range []*Principal{josh, home} {
+		if p.CanEntity(Read, Entity{Kind: "invitations", Owner: "lux"}, env) {
+			t.Errorf("%s/%s read lux's invitations without administering lux", p.Org, p.User)
+		}
+	}
+	// A plain member still reads only their own user row at home.
+	plain := person("webby", "sam", false, map[string]Role{"webby": Member})
+	if !plain.CanEntity(Read, Entity{Kind: "users", Owner: "webby", Name: "sam"}, env) ||
+		plain.CanEntity(Read, Entity{Kind: "users", Owner: "webby", Name: "dana"}, env) ||
+		plain.CanEntity(Write, Entity{Kind: "users", Owner: "webby", Name: "sam"}, env) {
+		t.Error("a plain member's self-service changed")
 	}
 }
 

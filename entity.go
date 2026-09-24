@@ -171,11 +171,15 @@ func (p *Principal) memberOf(org string) bool {
 	return ok
 }
 
-// adminOf reports whether p may CHANGE org — its own org as an org admin, or an
+// AdminOf reports whether p administers org — its own org as an org admin, or an
 // org it holds an owner/admin membership in. A plain member never qualifies:
 // belonging to an org is permission to see it, not to edit it. Role.Admits folds
 // owner into admin, so the founder of a self-serve org is not refused their own.
-func (p *Principal) adminOf(org string) bool {
+//
+// It is the ONE org-admin question: the registry decision below asks it of every
+// row a tenant owns, and a service that scopes a request to an org asks the same
+// one, so an admin is an admin wherever their account happens to live.
+func (p *Principal) AdminOf(org string) bool {
 	if p == nil || org == "" {
 		return false
 	}
@@ -261,8 +265,9 @@ func (p *Principal) BoundTo(org string) bool {
 //   - PLATFORM SUDO — the only cross-tenant scope, and the only one that may write
 //     a platform-owned row: the signing-cert poisoning gate, admin-scoped
 //     application and provider registration, every reserved surface.
-//   - ORG ADMIN — scoped to its OWN org. Manages every row its org owns; never
-//     another org's, never a platform-owned one.
+//   - ORG ADMIN — scoped to the orgs it administers (AdminOf): its own as an org
+//     admin, and any it holds an owner/admin membership in. Manages every row those
+//     orgs own; never another org's, never a platform-owned one.
 //   - REGULAR USER — self-service only: reading its own user record. The users kind
 //     serves reads as GET and writes as POST, so gating the self clause to a read
 //     keeps a regular user from writing its own record, which would otherwise let it
@@ -349,7 +354,7 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 		if v == Read {
 			return p.memberOf(e.Name)
 		}
-		return p.adminOf(e.Name)
+		return p.AdminOf(e.Name)
 	}
 	// A confidential client's authority is its capability allowlist and nothing else
 	// — never platform sudo, never org admin; an unmapped kind or unset allowlist
@@ -379,20 +384,24 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 	// every member of an org they do not live in.
 	//
 	// Read only, and only these two kinds. A project is created, renamed and deleted
-	// by the org's admin, whom p.Admin admits below; widening the verb would let
+	// by the org's admin, whom AdminOf admits below; widening the verb would let
 	// anyone ever added to an org delete its projects. Widening the kinds would reach
 	// users, certs and applications, which belonging does not entitle you to see.
 	// memberOf refuses an empty owner, so an unscoped read cannot slip through.
 	if v == Read && (e.Kind == "projects" || e.Kind == "workspaces") && p.memberOf(e.Owner) {
 		return true
 	}
-	if e.Owner == "" || e.Owner != p.Org {
+	if e.Owner == "" {
 		return false
 	}
-	if p.Admin {
+	// An org's admin runs the rows it owns, whichever org their account lives in.
+	// Asking only the home org's flag made every admin by membership a stranger to
+	// the org they administer: the founder of an org they joined from a personal
+	// account could not read its roster or its invitations.
+	if p.AdminOf(e.Owner) {
 		return true
 	}
-	return v == Read && e.Kind == "users" && e.Name != "" && e.Name == p.User
+	return v == Read && e.Kind == "users" && e.Owner == p.Org && e.Name != "" && e.Name == p.User
 }
 
 // Principal projects verified claims onto the decision's input — the ONE place a
