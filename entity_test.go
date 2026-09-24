@@ -378,6 +378,16 @@ func TestAnAdminByMembershipRunsTheOrgsRows(t *testing.T) {
 			t.Errorf("%s/%s read lux's invitations without administering lux", p.Org, p.User)
 		}
 	}
+	// Self-service is pinned to the home org: a plain member of lux does not read
+	// lux's user row that merely shares their name, and neither does a stranger.
+	for _, p := range []*Principal{
+		person("webby", "sam", false, map[string]Role{"lux": Member}),
+		person("webby", "sam", false, nil),
+	} {
+		if p.CanEntity(Read, Entity{Kind: "users", Owner: "lux", Name: "sam"}, env) {
+			t.Errorf("webby/sam read lux/sam (orgs %v)", p.Orgs)
+		}
+	}
 	// A plain member still reads only their own user row at home.
 	plain := person("webby", "sam", false, map[string]Role{"webby": Member})
 	if !plain.CanEntity(Read, Entity{Kind: "users", Owner: "webby", Name: "sam"}, env) ||
