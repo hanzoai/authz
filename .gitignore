@@ -28,3 +28,8 @@ _testmain.go
 
 # vendor files
 vendor
+
+# Local symlinks to LLM.md
+CLAUDE.md
+AGENTS.md
+GEMINI.md
