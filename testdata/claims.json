@@ -1,0 +1,106 @@
+{
+  "about": [
+    "What a Hanzo IAM access token says about its bearer, as data both readers test against:",
+    "this package (claims_vectors_test.go) and hanzoai/datastore's IAM user directory, which",
+    "embeds this file from its contrib/authz submodule (src/Access/tests/gtest_iam_verifier.cpp).",
+    "",
+    "claims  the payload IAM signs (a reader adds iss, aud, exp around it). `owner` is present",
+    "        on purpose and never decides anything: IAM stamps the APPLICATION's org into it.",
+    "kid     the signing key the token names.",
+    "org     the tenant the bearer acts in: the first entry of `orgs`, empty for none. Claims.Home.",
+    "program IAM signed `type: application` (client_credentials). Claims.Program.",
+    "person  a human: not a program, and a non-empty membership set. !Claims.Machine.",
+    "superadmin  person AND org == \"admin\" AND kid == superadmin_kid. What the datastore grants.",
+    "sudo    what Claims.Sudo answers: a person with \"admin\" anywhere in `orgs`, any key.",
+    "",
+    "Where superadmin and sudo differ, the two readers disagree about platform authority; the",
+    "datastore is the narrower one (superadmin implies sudo, never the reverse)."
+  ],
+  "superadmin_kid": "cert-admin",
+  "cases": [
+    {
+      "name": "person signing in through their own org's application",
+      "kid": "cert-hanzo",
+      "claims": {"sub": "acme/alice", "owner": "acme", "azp": "acme-console", "orgs": [{"org": "acme", "role": "owner"}]},
+      "org": "acme", "program": false, "person": true, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "person signing in through an application the admin org owns: owner is the app's org",
+      "kid": "cert-admin",
+      "claims": {"sub": "acme/alice", "owner": "admin", "azp": "admin-console", "orgs": [{"org": "acme", "role": "owner"}]},
+      "org": "acme", "program": false, "person": true, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "person signing in through another org's shared application",
+      "kid": "cert-zoo",
+      "claims": {"sub": "acme/alice", "owner": "zoo", "azp": "zoo-console", "orgs": [{"org": "acme", "role": "member"}, {"org": "zoo", "role": "member"}]},
+      "org": "acme", "program": false, "person": true, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "person in several orgs acts in the first, their home",
+      "kid": "cert-hanzo",
+      "claims": {"sub": "hanzo/bob", "owner": "hanzo", "orgs": [{"org": "hanzo", "role": "member"}, {"org": "acme", "role": "admin"}]},
+      "org": "hanzo", "program": false, "person": true, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "token without a membership set has no org and is no person",
+      "kid": "cert-hanzo",
+      "claims": {"sub": "acme/carol", "owner": "acme"},
+      "org": "", "program": false, "person": false, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "empty membership set is the same as none",
+      "kid": "cert-admin",
+      "claims": {"sub": "admin/carol", "owner": "admin", "orgs": []},
+      "org": "", "program": false, "person": false, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "SuperAdmin: home org admin, signed with the admin org's key",
+      "kid": "cert-admin",
+      "claims": {"sub": "admin/z", "owner": "admin", "orgs": [{"org": "admin", "role": "owner"}]},
+      "org": "admin", "program": false, "person": true, "superadmin": true, "sudo": true
+    },
+    {
+      "name": "home org admin signed with another org's key is not SuperAdmin",
+      "kid": "cert-hanzo",
+      "claims": {"sub": "admin/z", "owner": "hanzo", "orgs": [{"org": "admin", "role": "owner"}]},
+      "org": "admin", "program": false, "person": true, "superadmin": false, "sudo": true
+    },
+    {
+      "name": "operator anchored in a brand org with an admin membership is not SuperAdmin",
+      "kid": "cert-admin",
+      "claims": {"sub": "hanzo/z", "owner": "admin", "orgs": [{"org": "hanzo", "role": "owner"}, {"org": "admin", "role": "member"}]},
+      "org": "hanzo", "program": false, "person": true, "superadmin": false, "sudo": true
+    },
+    {
+      "name": "a look-alike of the reserved org is an ordinary org",
+      "kid": "cert-admin",
+      "claims": {"sub": "Admin/z", "owner": "Admin", "orgs": [{"org": "Admin", "role": "owner"}]},
+      "org": "Admin", "program": false, "person": true, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "program of the admin org: no org of its own, never SuperAdmin",
+      "kid": "cert-admin",
+      "claims": {"sub": "admin/kms-sync", "owner": "admin", "azp": "admin-kms-sync", "type": "application"},
+      "org": "", "program": true, "person": false, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "program granted a membership acts in that org",
+      "kid": "cert-hanzo",
+      "claims": {"sub": "admin/o11y", "owner": "hanzo", "azp": "hanzo-o11y", "type": "application", "orgs": [{"org": "hanzo", "role": "member"}]},
+      "org": "hanzo", "program": true, "person": false, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "program granted the admin org is still never SuperAdmin",
+      "kid": "cert-admin",
+      "claims": {"sub": "admin/ops", "owner": "admin", "azp": "admin-ops", "type": "application", "orgs": [{"org": "admin", "role": "owner"}]},
+      "org": "admin", "program": true, "person": false, "superadmin": false, "sudo": false
+    },
+    {
+      "name": "first membership naming no org leaves the bearer without one",
+      "kid": "cert-admin",
+      "claims": {"sub": "acme/dan", "owner": "admin", "orgs": [{"role": "member"}, {"org": "admin", "role": "member"}]},
+      "org": "", "program": false, "person": true, "superadmin": false, "sudo": true
+    }
+  ]
+}
