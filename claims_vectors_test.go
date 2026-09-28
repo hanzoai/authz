@@ -57,8 +57,8 @@ func TestClaimVectors(t *testing.T) {
 			}
 
 			// The warehouse's SuperAdmin, stated by the vector, is this package's
-			// Sudo narrowed to the home org and the admin org's own signing key. It
-			// may be narrower than Sudo and never wider.
+			// Sudo narrowed to the admin org's own signing key. It may be narrower
+			// than Sudo and never wider.
 			want := tc.Person && tc.Org == AdminOrg && tc.Kid == v.SuperadminKid
 			if tc.Superadmin != want {
 				t.Errorf("superadmin = %v, but person=%v org=%q kid=%q says %v", tc.Superadmin, tc.Person, tc.Org, tc.Kid, want)

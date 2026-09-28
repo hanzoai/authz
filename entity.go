@@ -132,15 +132,15 @@ type Principal struct {
 	// Admin is the ORG-level role bit, scoped to Org and never platform authority.
 	Admin bool
 
-	// Sudo is platform authority: the only cross-tenant scope, and the only scope
-	// that may write a platform-owned row.
+	// Sudo is platform authority — SuperAdmin: the only cross-tenant scope, and
+	// the only scope that may write a platform-owned row.
 	//
-	// It is an input rather than something derived here, because WHO is an operator
-	// is a resolution question with more than one honest answer — IAM reads a live
-	// user record in the reserved org, a service behind the edge reads the signed
-	// membership set — while WHAT an operator may do is this one decision. Deriving
-	// it here would force one resolution on every caller and silently change the
-	// other's boundary.
+	// It is an input rather than something derived here, because it is RESOLVED
+	// from different evidence by different callers while the rule is one: a person
+	// whose own org is the reserved admin org. IAM reads it off the live user row
+	// (schema.User.SuperAdmin); a service behind the edge reads it off the signed
+	// token ([Claims.Sudo], the first entry of `orgs`). A membership of the admin
+	// org is not it, and an app principal never is.
 	Sudo bool
 
 	// App is the confidential client the request authenticated as, or nil for a
@@ -157,12 +157,20 @@ type Principal struct {
 	Orgs map[string]Role
 }
 
-// memberOf reports whether p may act in org through its home org or a membership.
-// It is the ONE membership question the decision asks, so no clause re-derives the
-// set. Presence is the test, not the role: belonging is what a read needs.
-func (p *Principal) memberOf(org string) bool {
+// MemberOf reports whether p may act in org through its home org or a
+// membership. It is the ONE membership question, asked by this decision and by a
+// service scoping a request alike, so nothing re-derives the set. Presence is the
+// test, not the role: belonging is what a read needs.
+//
+// The admin org is the exception: only a SuperAdmin reaches it. A membership row
+// there reaches nothing, so a brand org's user is not given platform authority by
+// being added to it, and neither is a machine that lives in it.
+func (p *Principal) MemberOf(org string) bool {
 	if p == nil || org == "" {
 		return false
+	}
+	if org == AdminOrg {
+		return p.Sudo
 	}
 	if org == p.Org {
 		return true
@@ -178,10 +186,15 @@ func (p *Principal) memberOf(org string) bool {
 //
 // It is the ONE org-admin question: the registry decision below asks it of every
 // row a tenant owns, and a service that scopes a request to an org asks the same
-// one, so an admin is an admin wherever their account happens to live.
+// one, so an admin is an admin wherever their account happens to live. The admin
+// org is the exception [Principal.MemberOf] states: only a SuperAdmin
+// administers it.
 func (p *Principal) AdminOf(org string) bool {
 	if p == nil || org == "" {
 		return false
+	}
+	if org == AdminOrg {
+		return p.Sudo
 	}
 	if org == p.Org && p.Admin {
 		return true
@@ -352,7 +365,7 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 		// this on the home org alone refused an org's own admin the org they administer
 		// — which is what made a second org invisible in every console.
 		if v == Read {
-			return p.memberOf(e.Name)
+			return p.MemberOf(e.Name)
 		}
 		return p.AdminOf(e.Name)
 	}
@@ -387,8 +400,8 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 	// by the org's admin, whom AdminOf admits below; widening the verb would let
 	// anyone ever added to an org delete its projects. Widening the kinds would reach
 	// users, certs and applications, which belonging does not entitle you to see.
-	// memberOf refuses an empty owner, so an unscoped read cannot slip through.
-	if v == Read && (e.Kind == "projects" || e.Kind == "workspaces") && p.memberOf(e.Owner) {
+	// MemberOf refuses an empty owner, so an unscoped read cannot slip through.
+	if v == Read && (e.Kind == "projects" || e.Kind == "workspaces") && p.MemberOf(e.Owner) {
 		return true
 	}
 	if e.Owner == "" {
@@ -408,17 +421,29 @@ func (p *Principal) CanEntity(v Verb, e Entity, env Env) bool {
 // wire representation is read as authority, so no clause below reaches into a
 // token.
 //
-// A machine's authority does not come through here: Sudo is false for a
-// machine and for a confidential client by construction, so the projection cannot
-// hand either the operator scope.
+// A machine's authority does not come through here: Sudo and Admin are false for
+// a machine and for a confidential client by construction, so the projection
+// cannot hand either an admin scope.
+//
+// Org is the person's own org, [Claims.Home] — never the `owner` claim, which
+// names the application the token was minted through. Pairing the org-admin bit
+// with that claim would make a brand org's admin, signing in through an
+// application the admin org owns, the admin of the admin org. A machine has no
+// membership set, and for it the application's org IS its own, so it keeps the
+// `owner` claim.
 func (c *Claims) Principal() *Principal {
 	if c == nil {
 		return nil
 	}
+	person := !c.Machine()
+	org := c.Owner
+	if person {
+		org = c.Home()
+	}
 	p := &Principal{
-		Org:   c.Owner,
+		Org:   org,
 		User:  c.Username(),
-		Admin: c.IsAdmin,
+		Admin: person && c.IsAdmin,
 		Sudo:  c.Sudo(),
 		App:   c.App,
 	}

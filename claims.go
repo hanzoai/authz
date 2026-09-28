@@ -248,47 +248,42 @@ func (c *Claims) Program() bool {
 	return c != nil && c.Type == Program
 }
 
-// Sudo reports platform authority: a HUMAN who is a MEMBER of the reserved admin
-// org, at any position in the signed set. It is the only cross-tenant scope — the
-// one predicate every subsystem asks, so platform authority cannot mean two things
-// in two places.
+// Sudo reports platform authority — SuperAdmin: a PERSON whose own org is the
+// reserved admin org. It is the only cross-tenant scope, and the one predicate
+// every reader of a token asks, so platform authority cannot mean two things in
+// two places.
 //
-// The name is the whole scope. sudo is unqualified by construction — there is one
-// platform and nothing to name it against — which is why this takes no argument
-// where OrgAdmin takes the org it is asking about. The arity is the distinction;
-// spelling it into the name restated what the word already means.
+// The person's own org is [Claims.Home], the first entry of the signed `orgs`
+// set: IAM opens that set with the org its user row lives in
+// (store.MemberOrgRefs), and IAM decides SuperAdmin on that same row
+// (schema.User.SuperAdmin). So a token reads the way the row it was minted from
+// reads. It is never the `owner` claim, which is the org of whichever
+// application minted the token.
 //
-// The narrowing to a human is load-bearing in both directions. A machine token for
-// admin/<anything> holds NO authority (IAM resolves platform sudo from a live user
-// record in the admin org, never from a subject that merely names one), and a
-// confidential client holds none either — its whole authority is its capability
-// allowlist (entity.go). Without that, any admin-org client_credentials identity —
-// the KMS sync app, say — could name a victim org and the edge would write it,
-// handing every backend that trusts that header a cross-tenant read.
+// A MEMBERSHIP of the admin org held from anywhere else is not platform
+// authority. Platform authority goes to named people provisioned IN the admin
+// org; adding a brand org's user to it grants them nothing, and reading it as a
+// grant is how an org's own people end up administering the platform.
 //
-// The org is compared VERBATIM, like every other org comparison here: folding case
-// or space would make an org someone can self-serve ("Admin", "admin ") the
+// A machine is never one. A client_credentials token, a confidential client and
+// a token without a membership set are all [Claims.Machine], so an admin-org
+// program holds no authority here however its claims are shaped, and a person
+// whose membership set failed to resolve loses platform authority rather than
+// gaining it.
+//
+// The org is compared VERBATIM, like every other org comparison here: folding
+// case or space would make an org someone can self-serve ("Admin", "admin ") the
 // reserved one, which is the whole escalation in a single strings call.
 func (c *Claims) Sudo() bool {
-	if c == nil || c.Machine() {
-		return false
-	}
-	// MEMBERSHIP of the reserved org, at any position — not the home org.
-	//
-	// Home is where an identity is ANCHORED: its billing, its default scope, the
-	// first entry IAM writes. Platform authority is a different question, and the
-	// answer is membership: an operator is someone an existing operator put IN the
-	// reserved org, which is a deliberate, signed, revocable grant.
-	//
-	// Reading only the home org conflated the two and denied every real operator
-	// whose anchor is a brand org — which is every operator who also does ordinary
-	// work. It made the reserved org unreachable in practice while looking correct.
-	for _, m := range c.Orgs {
-		if m.Org == AdminOrg {
-			return true
-		}
-	}
-	return false
+	return c != nil && !c.Machine() && c.Home() == AdminOrg
+}
+
+// opens reports whether membership m opens its org to these claims. Every
+// membership does but one: the admin org, which only a SuperAdmin reaches
+// ([Claims.Sudo]). A membership row there confers nothing, so it neither selects
+// the org nor administers it nor grants a path under it.
+func (c *Claims) opens(m Membership) bool {
+	return m.Org != AdminOrg || c.Sudo()
 }
 
 // OrgAdmin reports whether these claims administer the named org — admin OF
@@ -309,7 +304,7 @@ func (c *Claims) OrgAdmin(org string) bool {
 		return true
 	}
 	for _, m := range c.Orgs {
-		if m.Org == org {
+		if m.Org == org && c.opens(m) {
 			return m.Role.Admits(Write)
 		}
 	}
@@ -334,7 +329,7 @@ func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 		return selected, true
 	}
 	for _, m := range c.Orgs {
-		if m.Org == selected {
+		if m.Org == selected && c.opens(m) {
 			return selected, true
 		}
 	}
@@ -430,7 +425,7 @@ func (c *Claims) Grants() []Grant {
 	}
 	out := make([]Grant, 0, len(c.Orgs))
 	for _, m := range c.Orgs {
-		if m.Org == "" || HasUnsafeRune(m.Org) {
+		if m.Org == "" || HasUnsafeRune(m.Org) || !c.opens(m) {
 			continue
 		}
 		out = append(out, Grant{Subject: subject, Scope: Path{m.Org}, Role: m.Role})

@@ -114,6 +114,31 @@ func TestPlatformOperatorActsInAnotherTenantWithoutOrgAdmin(t *testing.T) {
 	}
 }
 
+// A brand org's person holding an admin-org membership is not SuperAdmin: no
+// platform header, no switch into the admin org or a tenant they do not belong
+// to, and no org-admin header for the admin org.
+func TestAdminMembershipFromABrandOrgGetsNoPlatformHeader(t *testing.T) {
+	member := &authz.Claims{
+		Owner:             authz.AdminOrg,
+		PreferredUsername: "z",
+		IsAdmin:           true,
+		Orgs:              []authz.Membership{{Org: "hanzo", Role: authz.Owner}, {Org: authz.AdminOrg, Role: authz.Admin}},
+	}
+	for _, selected := range []string{authz.AdminOrg, "victim"} {
+		r := req(t)
+		edge.Apply(edge.Of(&r.Fiber().Request().Header), member, selected, nil)
+		if got := hdr(r, authz.HeaderUserAdmin); got != "" {
+			t.Errorf("selected %q: an admin-org membership was written %s=%q", selected, authz.HeaderUserAdmin, got)
+		}
+		if got := hdr(r, authz.HeaderOrg); got != "hanzo" {
+			t.Errorf("selected %q: %s = %q, want their own org", selected, authz.HeaderOrg, got)
+		}
+		if got := hdr(r, authz.HeaderUserOrgAdmin); got != "true" {
+			t.Errorf("selected %q: they lost %s for their own org", selected, authz.HeaderUserOrgAdmin)
+		}
+	}
+}
+
 // Strip deletes every header the edge mints and every authz.Retired name, and hands back
 // the CLAIMED org as an input. A forged authority header never survives ingress.
 func TestStripRemovesEveryWrittenAndRetiredHeader(t *testing.T) {

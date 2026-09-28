@@ -11,10 +11,11 @@
     "program IAM signed `type: application` (client_credentials). Claims.Program.",
     "person  a human: not a program, and a non-empty membership set. !Claims.Machine.",
     "superadmin  person AND org == \"admin\" AND kid == superadmin_kid. What the datastore grants.",
-    "sudo    what Claims.Sudo answers: a person with \"admin\" anywhere in `orgs`, any key.",
+    "sudo    what Claims.Sudo answers: a person whose org is \"admin\", any key. A membership of",
+    "        \"admin\" after the first entry is not it.",
     "",
-    "Where superadmin and sudo differ, the two readers disagree about platform authority; the",
-    "datastore is the narrower one (superadmin implies sudo, never the reverse)."
+    "The two readers agree on who holds platform authority and differ only in the signing key:",
+    "the datastore also requires the admin org's own (superadmin implies sudo, never the reverse)."
   ],
   "superadmin_kid": "cert-admin",
   "cases": [
@@ -70,7 +71,7 @@
       "name": "operator anchored in a brand org with an admin membership is not SuperAdmin",
       "kid": "cert-admin",
       "claims": {"sub": "hanzo/z", "owner": "admin", "orgs": [{"org": "hanzo", "role": "owner"}, {"org": "admin", "role": "member"}]},
-      "org": "hanzo", "program": false, "person": true, "superadmin": false, "sudo": true
+      "org": "hanzo", "program": false, "person": true, "superadmin": false, "sudo": false
     },
     {
       "name": "a look-alike of the reserved org is an ordinary org",
@@ -100,7 +101,7 @@
       "name": "first membership naming no org leaves the bearer without one",
       "kid": "cert-admin",
       "claims": {"sub": "acme/dan", "owner": "admin", "orgs": [{"role": "member"}, {"org": "admin", "role": "member"}]},
-      "org": "", "program": false, "person": true, "superadmin": false, "sudo": true
+      "org": "", "program": false, "person": true, "superadmin": false, "sudo": false
     }
   ]
 }
