@@ -143,6 +143,10 @@ type Principal struct {
 	// org is not it, and an app principal never is.
 	Sudo bool
 
+	// Machine marks a principal that is no person: a service account or a
+	// program's token. It owns nothing.
+	Machine bool
+
 	// App is the confidential client the request authenticated as, or nil for a
 	// person. An app principal is never Sudo and never Admin: its whole authority is
 	// its capability allowlist plus the self-read clauses, so a leaked client
@@ -200,6 +204,23 @@ func (p *Principal) AdminOf(org string) bool {
 		return true
 	}
 	return p.Orgs[org].Admits(Write)
+}
+
+// OwnerOf reports whether p owns org: a SuperAdmin, or a person holding the
+// owner role there. Only an owner deletes an org, and only an owner grants,
+// removes, demotes or transfers the owner role; an admin never does. The admin
+// org is owned by the SuperAdmins alone, and a machine owns nothing.
+func (p *Principal) OwnerOf(org string) bool {
+	if p == nil || org == "" {
+		return false
+	}
+	if p.Sudo {
+		return true
+	}
+	if org == AdminOrg || p.App != nil || p.Machine {
+		return false
+	}
+	return p.Orgs[org].Is(Owner)
 }
 
 // Holds reports whether p holds capability cap.
@@ -441,11 +462,12 @@ func (c *Claims) Principal() *Principal {
 		org = c.Home()
 	}
 	p := &Principal{
-		Org:   org,
-		User:  c.Username(),
-		Admin: person && c.IsAdmin,
-		Sudo:  c.Sudo(),
-		App:   c.App,
+		Org:     org,
+		User:    c.Username(),
+		Admin:   person && c.IsAdmin,
+		Sudo:    c.Sudo(),
+		Machine: !person,
+		App:     c.App,
 	}
 	if len(c.Orgs) > 0 {
 		p.Orgs = make(map[string]Role, len(c.Orgs))

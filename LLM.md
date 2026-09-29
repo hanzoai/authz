@@ -31,5 +31,13 @@ an `EffectiveOrg` switch into it, not `OrgAdmin`, not a `Grants` path, not
 claim is the minting application's org and never decides authority;
 `Claims.Principal` projects a person onto `Home()`.
 
+## Org roles
+
+`owner > admin > member`, each scoped to one org. `Principal.AdminOf` is owner
+or admin (and an org admin of the home org); `Principal.OwnerOf` is the owner
+role alone, or a SuperAdmin. Only `OwnerOf` deletes an org or grants, removes,
+demotes or transfers the owner role; an admin runs members and admins. The admin
+org is owned by the SuperAdmins alone, and a machine owns nothing.
+
 `testdata/claims.json` states the predicates as data; hanzoai/datastore embeds
 it, so the two readers cannot drift without a suite going red.

@@ -137,7 +137,7 @@ const (
 // vocabulary IAM controls, unlike an org, which is a tenant-chosen identifier and
 // is therefore compared verbatim. An unknown role admits nothing.
 func (r Role) Admits(v Verb) bool {
-	switch Role(strings.ToLower(strings.TrimSpace(string(r)))) {
+	switch r.Norm() {
 	case Member:
 		return v == Read
 	case Admin, Owner:
@@ -145,6 +145,12 @@ func (r Role) Admits(v Verb) bool {
 	}
 	return false
 }
+
+// Norm is r in the vocabulary's one spelling: lower case, no surrounding space.
+func (r Role) Norm() Role { return Role(strings.ToLower(strings.TrimSpace(string(r)))) }
+
+// Is reports whether r is want, spelled any way the vocabulary folds.
+func (r Role) Is(want Role) bool { return r.Norm() == want }
 
 // Grant is one access fact: Subject holds Role everywhere at or below Scope,
 // until Expiry.
