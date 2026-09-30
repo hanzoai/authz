@@ -492,6 +492,28 @@ func IsReservedOrg(owner string) bool {
 	return IsSigningOwner(owner) || owner == serviceOrg
 }
 
+// heldOrgs are the names, beyond the reserved system orgs, that no customer may
+// found: the brands, the orgs the platform runs or funds by name (commerce grants
+// adnexus, bootnode and osage an enterprise tier and a credit floor), and the
+// estate's own forge and registry namespaces (git.hanzo.ai/hanzoai,
+// ghcr.io/luxfi, ...), which a customer org of the same name would claim wherever
+// an org name addresses a namespace.
+var heldOrgs = []string{
+	"hanzo", "lux", "zoo", "pars",
+	"adnexus", "bootnode", "osage",
+	"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community",
+}
+
+// IsHeldOrg reports whether name is one no customer may found: a reserved system
+// org (IsReservedOrg) or one of the held names. It is the ONE list IAM's
+// onboarding and seed and cloud's org creation read, so they cannot disagree.
+func IsHeldOrg(name string) bool {
+	return IsReservedOrg(name) || slices.Contains(heldOrgs, name)
+}
+
+// HeldOrgs lists the held names beyond the reserved system orgs. It returns a copy.
+func HeldOrgs() []string { return slices.Clone(heldOrgs) }
+
 // HasUnsafeRune reports whether an identifier carries whitespace, a control rune
 // or a format rune.
 //

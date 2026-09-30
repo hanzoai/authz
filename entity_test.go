@@ -630,3 +630,24 @@ func TestNamelessAppAuthorizesNothing(t *testing.T) {
 		t.Error("a person was refused by the app capability gate")
 	}
 }
+
+// One list says which names no customer may found: the reserved system orgs and
+// the held names, and nothing else.
+func TestHeldOrgs(t *testing.T) {
+	for _, name := range []string{"admin", "built-in", "app", "hanzo", "lux", "zoo", "pars", "adnexus", "bootnode", "osage",
+		"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community"} {
+		if !IsHeldOrg(name) {
+			t.Errorf("%q must be held", name)
+		}
+	}
+	for _, name := range []string{"acme", "maxpower", "Hanzo", "hanzo ", ""} {
+		if IsHeldOrg(name) {
+			t.Errorf("%q must not be held", name)
+		}
+	}
+	h := HeldOrgs()
+	h[0] = "mutated"
+	if !IsHeldOrg("hanzo") {
+		t.Fatal("HeldOrgs handed out the list itself")
+	}
+}
