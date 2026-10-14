@@ -497,9 +497,10 @@ func IsReservedOrg(owner string) bool {
 // adnexus, bootnode and osage an enterprise tier and a credit floor), and the
 // estate's own forge and registry namespaces (git.hanzo.ai/hanzoai,
 // ghcr.io/luxfi, ...), which a customer org of the same name would claim wherever
-// an org name addresses a namespace.
+// an org name addresses a namespace, and "platform", the org cloud's flags app
+// keeps the platform switches under (the `beta` flag among them).
 var heldOrgs = []string{
-	"hanzo", "lux", "zoo", "pars",
+	"hanzo", "lux", "zoo", "pars", "platform",
 	"adnexus", "bootnode", "osage",
 	"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community",
 }

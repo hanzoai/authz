@@ -635,12 +635,12 @@ func TestNamelessAppAuthorizesNothing(t *testing.T) {
 // the held names, and nothing else.
 func TestHeldOrgs(t *testing.T) {
 	for _, name := range []string{"admin", "built-in", "app", "hanzo", "lux", "zoo", "pars", "adnexus", "bootnode", "osage",
-		"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community"} {
+		"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community", "platform"} {
 		if !IsHeldOrg(name) {
 			t.Errorf("%q must be held", name)
 		}
 	}
-	for _, name := range []string{"acme", "maxpower", "Hanzo", "hanzo ", ""} {
+	for _, name := range []string{"acme", "maxpower", "Hanzo", "hanzo ", "Platform", ""} {
 		if IsHeldOrg(name) {
 			t.Errorf("%q must not be held", name)
 		}
