@@ -651,3 +651,28 @@ func TestHeldOrgs(t *testing.T) {
 		t.Fatal("HeldOrgs handed out the list itself")
 	}
 }
+
+// The internal orgs are the held ones and the owner's own card-paid tenants. An
+// internal tenant stays a tenant: it is not held.
+func TestInternalOrgs(t *testing.T) {
+	for _, name := range []string{"z24", "zk", "hanzo", "admin", "adnexus", "platform"} {
+		if !IsInternalOrg(name) {
+			t.Errorf("%q must be internal", name)
+		}
+	}
+	for _, name := range []string{"webby-ai", "acme", "jamessburnss1313", "Z24", "zk ", ""} {
+		if IsInternalOrg(name) {
+			t.Errorf("%q must not be internal", name)
+		}
+	}
+	for _, name := range []string{"z24", "zk"} {
+		if IsHeldOrg(name) {
+			t.Errorf("%q is internal, not held: it is founded, shared and run as a tenant", name)
+		}
+	}
+	i := InternalOrgs()
+	i[0] = "mutated"
+	if !IsInternalOrg("z24") {
+		t.Fatal("InternalOrgs handed out the list itself")
+	}
+}

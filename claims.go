@@ -515,6 +515,22 @@ func IsHeldOrg(name string) bool {
 // HeldOrgs lists the held names beyond the reserved system orgs. It returns a copy.
 func HeldOrgs() []string { return slices.Clone(heldOrgs) }
 
+// internalOrgs are tenants whose money is the platform's own: orgs the owner opened to
+// buy the platform's plans on the owner's own card. They are customers' in every other
+// respect — founded, shared and run like any tenant, and not held — and no figure of
+// customer money counts them.
+var internalOrgs = []string{"z24", "zk"}
+
+// IsInternalOrg reports whether name's money is the platform's own: a held org
+// (IsHeldOrg) or one of internalOrgs. It is the ONE list a board reads to leave the
+// platform's own activity out of a customer figure.
+func IsInternalOrg(name string) bool {
+	return IsHeldOrg(name) || slices.Contains(internalOrgs, name)
+}
+
+// InternalOrgs lists the internal orgs beyond the held ones. It returns a copy.
+func InternalOrgs() []string { return slices.Clone(internalOrgs) }
+
 // HasUnsafeRune reports whether an identifier carries whitespace, a control rune
 // or a format rune.
 //
