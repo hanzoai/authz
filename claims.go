@@ -15,6 +15,7 @@
 package authz
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -282,8 +283,27 @@ func (c *Claims) Sudo() bool {
 // membership does but one: the admin org, which only a SuperAdmin reaches
 // ([Claims.Sudo]). A membership row there confers nothing, so it neither selects
 // the org nor administers it nor grants a path under it.
+//
+// A brand's directory opens to nobody either: it holds the brand's customer
+// accounts and is no one's tenant, so belonging to it — which every customer does,
+// as their home — selects nothing, administers nothing and grants no path.
+//
+// An org the platform runs (IsPlatformOrg) opens to the people who run it — its
+// owners and admins — to a SuperAdmin, and to its own machines: a machine whose
+// application serves that org (`owner`), never one from elsewhere that holds a
+// plain membership of it. Its plain members
+// are not one tenant: a customer who landed in a brand org shares nothing with its
+// staff, so belonging there opens none of the brand's data.
 func (c *Claims) opens(m Membership) bool {
-	return m.Org != AdminOrg || c.Sudo()
+	switch {
+	case IsDirectory(m.Org):
+		return false
+	case m.Org == AdminOrg:
+		return c.Sudo()
+	case IsPlatformOrg(m.Org):
+		return c.Sudo() || (c.Machine() && m.Org == c.Owner) || m.Role.Admits(Write)
+	}
+	return true
 }
 
 // OrgAdmin reports whether these claims administer the named org — admin OF
@@ -300,7 +320,7 @@ func (c *Claims) OrgAdmin(org string) bool {
 	if c == nil || c.Machine() || org == "" {
 		return false
 	}
-	if c.IsAdmin && org == c.Home() {
+	if c.IsAdmin && org == c.Home() && !IsDirectory(org) {
 		return true
 	}
 	for _, m := range c.Orgs {
@@ -311,19 +331,50 @@ func (c *Claims) OrgAdmin(org string) bool {
 	return false
 }
 
+// Default is the org a request acts in when it selects none: the first org the
+// membership set opens. For most accounts that is the home org, which IAM lists
+// first. For an account whose home is a brand's directory it is the org listed
+// right after it — the personal org — and for a plain member of an org the
+// platform runs, the first org of their own. Empty when the set opens nothing, and
+// every org gate then fails closed.
+func (c *Claims) Default() string {
+	if t := c.Tenancy(); len(t) > 0 {
+		return t[0].Org
+	}
+	return ""
+}
+
+// Tenancy is the part of the membership set these claims act in: every
+// membership that opens its org, in IAM's order, so its first entry is
+// [Claims.Default]. A surface that offers a choice of org offers these and no
+// others; a membership left out is one that selects nothing.
+func (c *Claims) Tenancy() []Membership {
+	if c == nil {
+		return nil
+	}
+	var out []Membership
+	for _, m := range c.Orgs {
+		if m.Org != "" && !HasUnsafeRune(m.Org) && c.opens(m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // EffectiveOrg resolves WHICH ORG a request acts in: the org the client selected
 // when the signed membership set admits it (or the operator may masquerade),
-// otherwise the home org.
+// otherwise the default org ([Claims.Default]).
 //
-// It fails closed to home. A selected org outside the membership set is not an
-// error to surface, it is simply not granted.
+// It fails closed to the default. A selected org outside the membership set is not
+// an error to surface, it is simply not granted, and a directory is never one a
+// request acts in.
 func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 	if c == nil {
 		return "", false
 	}
-	home := c.Home()
-	if selected == "" || selected == home || HasUnsafeRune(selected) {
-		return home, false
+	def := c.Default()
+	if selected == "" || selected == def || HasUnsafeRune(selected) {
+		return def, false
 	}
 	if c.Sudo() {
 		return selected, true
@@ -333,7 +384,7 @@ func (c *Claims) EffectiveOrg(selected string) (org string, switched bool) {
 			return selected, true
 		}
 	}
-	return home, false
+	return def, false
 }
 
 // LedgerOrg resolves WHICH ORG PAYS for a request, from the same selection
@@ -492,24 +543,72 @@ func IsReservedOrg(owner string) bool {
 	return IsSigningOwner(owner) || owner == serviceOrg
 }
 
-// heldOrgs are the names, beyond the reserved system orgs, that no customer may
-// found: the brands, the orgs the platform runs or funds by name (commerce grants
-// adnexus, bootnode and osage an enterprise tier and a credit floor), and the
-// estate's own forge and registry namespaces (git.hanzo.ai/hanzoai,
-// ghcr.io/luxfi, ...), which a customer org of the same name would claim wherever
-// an org name addresses a namespace, and "platform", the org cloud's flags app
-// keeps the platform switches under (the `beta` flag among them).
-var heldOrgs = []string{
+// platformOrgs are the orgs the platform runs under its own names: the brands,
+// "platform" (the org cloud's flags app keeps the platform switches under, the
+// `beta` flag among them), and the estate's own forge and registry namespaces
+// (git.hanzo.ai/hanzoai, ghcr.io/luxfi, ...), which a customer org of the same name
+// would claim wherever an org name addresses a namespace.
+var platformOrgs = []string{
 	"hanzo", "lux", "zoo", "pars", "platform",
-	"adnexus", "bootnode", "osage",
 	"hanzoai", "luxfi", "zooai", "hanzo-inc", "hanzo-apps", "hanzo-community",
 }
+
+// fundedOrgs are customer orgs the platform funds by name (commerce grants them an
+// enterprise tier and a credit floor). Their names are held, and they are run by
+// their customers.
+var fundedOrgs = []string{"adnexus", "bootnode", "osage"}
+
+// directories name, for each brand, the org its customers' accounts live in. A
+// directory holds identities and nothing else: it is every customer's home and no
+// one's tenant (see [Claims.opens]).
+var directories = map[string]string{
+	"hanzo": "hanzo-id",
+	"lux":   "lux-id",
+	"zoo":   "zoo-id",
+	"pars":  "pars-id",
+}
+
+// DirectoryOf is the directory a brand's customers live in, or "" for an org that
+// is not a brand with one.
+func DirectoryOf(brand string) string { return directories[brand] }
+
+// Directories maps each brand to its directory. It returns a copy.
+func Directories() map[string]string { return maps.Clone(directories) }
+
+// IsDirectory reports whether org is a brand's directory.
+func IsDirectory(org string) bool {
+	for _, d := range directories {
+		if d == org {
+			return true
+		}
+	}
+	return false
+}
+
+// heldOrgs are the names, beyond the reserved system orgs, that no customer may
+// found: the platform's, the funded customers', and the directories.
+var heldOrgs = func() []string {
+	out := slices.Concat(platformOrgs, fundedOrgs)
+	for _, d := range directories {
+		out = append(out, d)
+	}
+	slices.Sort(out[len(platformOrgs)+len(fundedOrgs):])
+	return out
+}()
 
 // IsHeldOrg reports whether name is one no customer may found: a reserved system
 // org (IsReservedOrg) or one of the held names. It is the ONE list IAM's
 // onboarding and seed and cloud's org creation read, so they cannot disagree.
 func IsHeldOrg(name string) bool {
 	return IsReservedOrg(name) || slices.Contains(heldOrgs, name)
+}
+
+// IsPlatformOrg reports whether name is an org the platform itself runs: a
+// reserved system org, one of the platform's own names, or a directory. A held
+// org that is not one of these is a customer's (fundedOrgs), and its admins run it
+// as any customer's admins do.
+func IsPlatformOrg(name string) bool {
+	return IsReservedOrg(name) || slices.Contains(platformOrgs, name) || IsDirectory(name)
 }
 
 // HeldOrgs lists the held names beyond the reserved system orgs. It returns a copy.

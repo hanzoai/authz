@@ -310,8 +310,9 @@ func TestOrgRowFollowsMembershipNotTheAccountOwner(t *testing.T) {
 	env := allow(nil)
 	org := func(name string) Entity { return Entity{Kind: "organizations", Owner: AdminOrg, Name: name} }
 
-	// alice's account lives in acme; she also runs team-x and merely belongs to lux.
-	alice := person("acme", "alice", false, map[string]Role{"team-x": Admin, "lux": Member})
+	// alice's account lives in acme; she also runs team-x, merely belongs to beta,
+	// and landed in the brand org lux, which opens only to those who run it.
+	alice := person("acme", "alice", false, map[string]Role{"team-x": Admin, "beta": Member, "lux": Member})
 
 	for _, tc := range []struct {
 		org        string
@@ -319,7 +320,8 @@ func TestOrgRowFollowsMembershipNotTheAccountOwner(t *testing.T) {
 	}{
 		{"acme", true, false},    // home org: belongs, but is not its admin
 		{"team-x", true, true},   // an org she helps run
-		{"lux", true, false},     // an org she merely belongs to
+		{"beta", true, false},    // an org she merely belongs to
+		{"lux", false, false},    // a brand org she is a plain member of
 		{"victim", false, false}, // an org she has nothing to do with
 	} {
 		if got := alice.CanEntity(Read, org(tc.org), env); got != tc.read {

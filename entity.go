@@ -168,13 +168,23 @@ type Principal struct {
 //
 // The admin org is the exception: only a SuperAdmin reaches it. A membership row
 // there reaches nothing, so a brand org's user is not given platform authority by
-// being added to it, and neither is a machine that lives in it.
+// being added to it, and neither is a machine that lives in it. A brand's directory
+// is the same: every customer lives there, so living there reaches nothing — not
+// the directory's rows, not the other customers in it. And an org the platform
+// runs reaches its admins, never its plain members.
 func (p *Principal) MemberOf(org string) bool {
 	if p == nil || org == "" {
 		return false
 	}
-	if org == AdminOrg {
+	if org == AdminOrg || IsDirectory(org) {
 		return p.Sudo
+	}
+	// An org the platform runs is one tenant only for the people who run it. A plain
+	// member — a customer who landed in a brand org — belongs to none of its data. Its
+	// own machines and the application that serves it are its own; a machine of
+	// another org holding a plain membership there is a plain member.
+	if IsPlatformOrg(org) && !((p.Machine || p.App != nil) && p.Org == org) {
+		return p.Sudo || p.AdminOf(org)
 	}
 	if org == p.Org {
 		return true
@@ -191,13 +201,13 @@ func (p *Principal) MemberOf(org string) bool {
 // It is the ONE org-admin question: the registry decision below asks it of every
 // row a tenant owns, and a service that scopes a request to an org asks the same
 // one, so an admin is an admin wherever their account happens to live. The admin
-// org is the exception [Principal.MemberOf] states: only a SuperAdmin
-// administers it.
+// org and a brand's directory are the exceptions [Principal.MemberOf] states: only
+// a SuperAdmin administers them.
 func (p *Principal) AdminOf(org string) bool {
 	if p == nil || org == "" {
 		return false
 	}
-	if org == AdminOrg {
+	if org == AdminOrg || IsDirectory(org) {
 		return p.Sudo
 	}
 	if org == p.Org && p.Admin {
@@ -217,7 +227,7 @@ func (p *Principal) OwnerOf(org string) bool {
 	if p.Sudo {
 		return true
 	}
-	if org == AdminOrg || p.App != nil || p.Machine {
+	if org == AdminOrg || IsDirectory(org) || p.App != nil || p.Machine {
 		return false
 	}
 	return p.Orgs[org].Is(Owner)

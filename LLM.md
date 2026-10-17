@@ -31,6 +31,39 @@ an `EffectiveOrg` switch into it, not `OrgAdmin`, not a `Grants` path, not
 claim is the minting application's org and never decides authority;
 `Claims.Principal` projects a person onto `Home()`.
 
+## Directories — every customer's home, no one's tenant
+
+Each brand keeps its customers' accounts in one org of its own: `DirectoryOf`
+maps `hanzo`→`hanzo-id`, `lux`→`lux-id`, `zoo`→`zoo-id`, `pars`→`pars-id`. A
+directory holds identities and nothing else. It is held (no customer founds
+one) and the platform's (`IsPlatformOrg`), and it opens to nobody: a membership
+of it is not an `EffectiveOrg` switch, not `OrgAdmin`, not a `Grants` path, and
+`Principal.MemberOf`/`AdminOf`/`OwnerOf` refuse it to everyone but a SuperAdmin,
+so living there reaches none of the other customers in it. A customer's own row
+stays readable (the self-read clause names the row, not the org).
+
+`Home()` stays the identity: for a customer it is the directory, and
+`<Home>/<username>` is who they are. What a request acts in when it selects
+nothing is `Default()`: the home, or for a directory home the first org the
+membership set opens — the personal org, which IAM lists right after the home.
+An account whose set opens nothing has no default, and every org gate fails
+closed. `EffectiveOrg` and `LedgerOrg` fall back to `Default()`. `Tenancy()` is
+the opened part of the set, in order (its first entry is `Default()`): what a
+surface offers as a choice of org, and what IAM's `groups` claim carries.
+
+An org the platform runs (`IsPlatformOrg`: the reserved orgs, the brands, the
+platform's own names, the directories) opens to the people who run it — its
+owners and admins — to its own machines, and to a SuperAdmin: `opens` refuses a plain member's
+membership there, `Default()` skips it, and `Principal.MemberOf` refuses a plain
+person (its own machines and the application serving it are unchanged). A
+customer who landed in a brand org is not one tenant with its staff, so they act
+in no org of the platform's; with no org of their own they act in none.
+
+`IsHeldOrg` is still the founding rule: the platform's names, the orgs funded by
+name (`adnexus`, `bootnode`, `osage`) and the directories. The funded orgs are
+customers' orgs, so `IsPlatformOrg` leaves them out: a surface that treats the
+platform's own orgs specially (KMS listing) asks that, not `IsHeldOrg`.
+
 ## Org roles
 
 `owner > admin > member`, each scoped to one org. `Principal.AdminOf` is owner
