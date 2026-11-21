@@ -1,5 +1,7 @@
 # Hanzo Authz
 
+[![Open in Hanzo](https://hanzo.app/badges/open-in-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/authz&ref=main&action=open) [![Edit with Hanzo](https://hanzo.app/badges/edit-with-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/authz&ref=main&action=edit) [![Deploy with Hanzo](https://hanzo.app/badges/deploy-with-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/authz&ref=main&action=deploy)
+
 The access-control library every Hanzo Go service uses to read a token and decide whether
 a caller may do a thing: JWT verification, claims, and the grant calculus over
 organizations, apps and paths.
